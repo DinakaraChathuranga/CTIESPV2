@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, 'Liberation Sans', sans-serif;
+    font-size: 10pt;
+    color: #1a1a1a;
+    background: #e8e8e8;
+  }
+
+  /* ── Page wrapper ── */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    background: #fff;
+    margin: 0 auto 12px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ═══════════════════════════════════════
+     COVER PAGE
+  ═══════════════════════════════════════ */
+
+  .cover-header {
+    background: #8b1010;
+    min-height: 230px;
+    position: relative;
+    padding: 24px 36px 32px;
+    overflow: hidden;
+  }
+
+  /* Decorative arc / road graphic */
+  .cover-circle {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #6b0000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cover-circle svg { opacity: 0.85; }
+
+  .cover-date-top {
+    font-size: 8.5pt;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 70px;
+    letter-spacing: 0.04em;
+  }
+
+  .cover-title {
+    font-size: 19pt;
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1.25;
+    max-width: 430px;
+    margin-bottom: 14px;
+  }
+
+  .cover-rule {
+    width: 320px;
+    height: 3px;
+    background: rgba(255,255,255,0.25);
+  }
+
+  /* ── Cover meta fields ── */
+  .cover-meta {
+    padding: 28px 36px 20px;
+    background: #fff;
+  }
+
+  .cover-row {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 14px;
+    font-size: 10pt;
+  }
+  .cover-label {
+    font-weight: 700;
+    color: #1a1a1a;
+    width: 168px;
+    flex-shrink: 0;
+  }
+  .cover-colon {
+    margin-right: 12px;
+    color: #444;
+  }
+  .cover-value {
+    color: #1a1a1a;
+    flex: 1;
+    line-height: 1.5;
+  }
+
+  .sev-CRITICAL { color: #b30000; font-weight: 700; }
+  .sev-HIGH     { color: #c05c00; font-weight: 700; }
+  .sev-MEDIUM   { color: #b07800; font-weight: 700; }
+  .sev-LOW      { color: #1a7a2a; font-weight: 700; }
+
+  .kev-badge {
+    display: inline-block;
+    background: #fee2e2;
+    border: 1px solid #dc2626;
+    color: #7f1d1d;
+    font-size: 7.5pt;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 3px;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+
+  .cover-date-bottom {
+    padding: 8px 36px 24px;
+    font-size: 8.5pt;
+    color: #555;
+  }
+
+  /* ═══════════════════════════════════════
+     CONTENT PAGE
+  ═══════════════════════════════════════ */
+
+  .content-page {
+    background: #fff;
+    position: relative;
+  }
+
+  /* Subtle dot-pattern background for content */
+  .content-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, #e8b4b4 1px, transparent 1px);
+    background-size: 14px 14px;
+    background-color: #fdf5f5;
+    opacity: 0.45;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .content-inner {
+    position: relative;
+    z-index: 1;
+    padding: 24px 28px 32px;
+  }
+
+  /* ── Section heading ── */
+  .section-heading {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1a1a1a;
+    border-bottom: 2px solid #8b1010;
+    padding-bottom: 3px;
+    margin-bottom: 14px;
+    margin-top: 20px;
+    display: inline-block;
+    min-width: 80px;
+  }
+  .section-heading:first-child { margin-top: 0; }
+
+  /* ── Overview table ── */
+  .overview-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+  }
+  .overview-table thead tr {
+    background: #2d2d2d;
+  }
+  .overview-table thead th {
+    color: #fff;
+    font-size: 8.5pt;
+    font-weight: 700;
+    padding: 8px 14px;
+    text-align: center;
+  }
+  .overview-table tbody tr:nth-child(odd)  { background: #fde8e8; }
+  .overview-table tbody tr:nth-child(even) { background: #fff; }
+  .overview-table tbody td {
+    padding: 8px 14px;
+    font-size: 9pt;
+    text-align: center;
+    border: 1px solid #e4b4b4;
+    font-weight: 600;
+  }
+  .ov-cve { font-family: 'Courier New', monospace; font-size: 8pt; color: #444; font-weight: 400; }
+
+  /* ── Description box ── */
+  .desc-wrapper {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4px;
+  }
+  .desc-header {
+    background: #8b1010;
+    color: #fff;
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 8px 14px;
+    text-align: center;
+    display: block;
+    border-bottom: none;
+  }
+  .desc-body {
+    background: #fef9f9;
+    border: 1px solid #e4b4b4;
+    padding: 14px 16px;
+  }
+  .desc-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .desc-item:last-child { margin-bottom: 0; }
+  .desc-diamond {
+    color: #8b1010;
+    margin-right: 9px;
+    font-size: 9pt;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .desc-text {
+    font-size: 9pt;
+    line-height: 1.65;
+    color: #1a1a1a;
+  }
+  .desc-text strong { font-weight: 700; }
+
+  /* ── Detail table ── */
+  .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #e4b4b4;
+  }
+  .detail-table tr {
+    vertical-align: top;
+    border-bottom: 1px solid #e4b4b4;
+  }
+  .detail-table tr:last-child { border-bottom: none; }
+  .detail-label {
+    background: #8b1010;
+    color: #fff;
+    font-weight: 700;
+    font-size: 8.5pt;
+    padding: 10px 12px;
+    width: 155px;
+    min-width: 155px;
+    vertical-align: top;
+  }
+  .detail-value {
+    font-size: 9pt;
+    color: #1a1a1a;
+    padding: 10px 14px;
+    line-height: 1.65;
+    background: #fff;
+  }
+  .detail-value.alt { background: #fef9f9; }
+  .detail-value ul  { margin: 0; padding-left: 18px; }
+  .detail-value li  { margin-bottom: 5px; }
+  .detail-value li strong { font-weight: 700; }
+  .detail-value p   { margin-bottom: 6px; }
+
+  /* ── References ── */
+  a.ref-link {
+    color: #1a4fc4;
+    text-decoration: underline;
+    font-size: 8pt;
+    word-break: break-all;
+  }
+
+  /* ── Page number ── */
+  .page-num {
+    text-align: right;
+    font-size: 9pt;
+    font-weight: 700;
+    color: #555;
+    padding: 6px 28px 10px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Print ── */
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { background: #fff; }
+    .page { margin: 0; width: 100%; page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     PAGE 1 — COVER
+══════════════════════════════════════════════════════ -->
+<div class="page">
+
+  <!-- Red header with road graphic -->
+  <div class="cover-header">
+
+    <!-- Decorative circular road/city illustration -->
+    <div class="cover-circle">
+      <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="100" cy="100" r="100" fill="#6b0000"/>
+        <!-- Abstract converging road lines -->
+        <line x1="0"   y1="200" x2="100" y2="80"  stroke="#c06060" stroke-width="18" opacity="0.5"/>
+        <line x1="200" y1="200" x2="100" y2="80"  stroke="#c06060" stroke-width="18" opacity="0.5"/>
+        <line x1="40"  y1="200" x2="100" y2="80"  stroke="#d08080" stroke-width="8"  opacity="0.35"/>
+        <line x1="160" y1="200" x2="100" y2="80"  stroke="#d08080" stroke-width="8"  opacity="0.35"/>
+        <!-- City silhouette -->
+        <rect x="60"  y="40"  width="20" height="50" fill="#c06060" opacity="0.5"/>
+        <rect x="85"  y="20"  width="30" height="70" fill="#c06060" opacity="0.6"/>
+        <rect x="120" y="35"  width="22" height="55" fill="#c06060" opacity="0.45"/>
+        <rect x="145" y="50"  width="18" height="40" fill="#c06060" opacity="0.35"/>
+        <rect x="35"  y="55"  width="16" height="35" fill="#c06060" opacity="0.35"/>
+      </svg>
+    </div>
+
+    <div class="cover-date-top">{{ report_date }}</div>
+    <h1 class="cover-title">{{ d.title }}</h1>
+    <div class="cover-rule"></div>
+  </div>
+
+  <!-- Cover meta fields -->
+  <div class="cover-meta">
+    <div class="cover-row">
+      <div class="cover-label">Type</div>
+      <div class="cover-colon">:</div>
+      <div class="cover-value">{{ d.type }}</div>
+    </div>
+    <div class="cover-row">
+      <div class="cover-label">Severity</div>
+      <div class="cover-colon">:</div>
+      <div class="cover-value">
+        <span class="sev-{{ d.severity }}">{{ d.severity_detail }}</span>
+        {% if is_kev %}<span class="kev-badge">CISA KEV</span>{% endif %}
+      </div>
+    </div>
+    <div class="cover-row">
+      <div class="cover-label">Target Platforms</div>
+      <div class="cover-colon">:</div>
+      <div class="cover-value">{{ d.target_platforms }}</div>
+    </div>
+    <div class="cover-row">
+      <div class="cover-label">Alert Number</div>
+      <div class="cover-colon">:</div>
+      <div class="cover-value" style="font-family: 'Courier New', monospace; font-size: 9pt;">{{ d.alert_number }}</div>
+    </div>
+  </div>
+
+  <div class="cover-date-bottom">{{ report_date }}</div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════
+     PAGE 2 — CONTENT
+══════════════════════════════════════════════════════ -->
+<div class="page content-page">
+  <div class="content-inner">
+
+    <!-- Overview -->
+    <div class="section-heading">Overview</div>
+
+    <table class="overview-table">
+      <thead>
+        <tr>
+          <th style="width:45%; text-align:left;">Product</th>
+          <th style="width:20%;">Severity</th>
+          <th>Threat</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in overview %}
+        <tr>
+          <td style="text-align:left; font-weight:600;">{{ row.product }}</td>
+          <td class="sev-{{ row.severity }}">{{ row.severity }}</td>
+          <td class="ov-cve">{{ row.cve_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Description -->
+    <div class="section-heading" style="margin-top:20px;">Description</div>
+
+    <div>
+      <div class="desc-header">Description</div>
+      <div class="desc-body">
+        {% for para in description_paragraphs %}
+        <div class="desc-item">
+          <span class="desc-diamond">❖</span>
+          <span class="desc-text">{{ para }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Details table -->
+    <div style="margin-top: 18px;">
+    <table class="detail-table">
+
+      <tr>
+        <td class="detail-label">Affected Product</td>
+        <td class="detail-value">{{ d.affected_products | join(', ') }}</td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Affected Versions</td>
+        <td class="detail-value alt">{{ d.affected_versions }}</td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Severity</td>
+        <td class="detail-value">
+          <ul>
+            {% for row in overview %}
+            <li>
+              <span class="sev-{{ row.severity }}">{{ row.severity }}</span>
+              {% if d.cvss_score %} (CVSS {{ d.cvss_score }}){% endif %}
+               — {{ row.cve_id }}
+            </li>
+            {% endfor %}
+          </ul>
+        </td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Impact</td>
+        <td class="detail-value alt">
+          <ul>
+            {% for item in d.impact %}
+            <li>
+              {% if ' - ' in item %}
+                <strong>{{ item.split(' - ')[0] }}</strong> - {{ item[item.index(' - ')+3:] }}
+              {% else %}
+                {{ item }}
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Attack Vector</td>
+        <td class="detail-value">{{ d.attack_vector }}</td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Remediations</td>
+        <td class="detail-value alt">{{ d.remediation }}</td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">References</td>
+        <td class="detail-value">
+          <ul>
+            {% for ref in d.references %}
+            <li><a class="ref-link" href="{{ ref }}">{{ ref }}</a></li>
+            {% endfor %}
+          </ul>
+        </td>
+      </tr>
+
+      <tr>
+        <td class="detail-label">Disclaimer</td>
+        <td class="detail-value alt">
+          <ul>
+            <li>The information provided here is on an "as is" basis, without warranty of any kind.</li>
+            <li>Products that are past their End of General Support dates are not evaluated as part of security advisories. If your organisation has extended support, please use those processes to request assistance. (if you do not have such support, you need to patch to the latest version or Long-Term Support (LTS) version.)</li>
+          </ul>
+        </td>
+      </tr>
+
+    </table>
+    </div>
+
+  </div><!-- /content-inner -->
+
+  <div class="page-num">1</div>
+</div>
+
+</body>
+</html>

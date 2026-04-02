@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+venv
+.venv
+*.egg-info
+.env
+generated_reports
+sample_reports
+chroma_data
+data
+*.log
+.git
+.gitignore

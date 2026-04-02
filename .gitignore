@@ -1,0 +1,25 @@
+# Secrets — NEVER commit these
+.env
+gcp-key.json
+*.json.bak
+ctipro-*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Docker volumes
+chroma_data/
+generated_reports/
+sample_reports/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+*.log
