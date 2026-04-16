@@ -16,7 +16,7 @@ redis==5.0.4
 kombu==5.3.4
 
 # ── Vector store (RAG) ─────────────────────────────────────────────────────────
-chromadb-client==0.5.23
+#chromadb-client==0.5.23
 
 # ── Embeddings ─────────────────────────────────────────────────────────────────
 sentence-transformers==3.0.1

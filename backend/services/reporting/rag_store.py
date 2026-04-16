@@ -24,7 +24,7 @@ async def query_similar_reports(query_text: str, severity: Optional[str] = None,
     try:
         from core.database import AsyncSessionLocal
         from models.db_models import SampleReport
-        from sqlalchemy import select, or_
+        from sqlalchemy import select
 
         async with AsyncSessionLocal() as db:
             # Priority 1: same severity + vuln_type keywords
@@ -75,11 +75,13 @@ async def list_sample_reports():
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(SampleReport))
             reports = result.scalars().all()
-            return [{'doc_id': r.chroma_doc_id, 'filename': r.filename,
+            # Map the database ID to the 'doc_id' field so the UI works seamlessly
+            return [{'doc_id': str(r.id), 'filename': r.filename,
                      'severity': r.severity, 'vuln_type': r.vuln_type} for r in reports]
     except Exception:
         return []
 
 
 async def delete_sample_report(doc_id):
+    # Dummy return since deletion logic is handled directly in routes.py now
     return True

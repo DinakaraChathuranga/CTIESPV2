@@ -17,10 +17,10 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ── ChromaDB ──────────────────────────────────────────────────────────────
-    CHROMA_HOST: str = "localhost"
-    CHROMA_PORT: int = 8001
-    CHROMA_COLLECTION_REPORTS: str = "sample_reports"
-    CHROMA_COLLECTION_ASSETS: str = "client_assets"
+    #CHROMA_HOST: str = "localhost"
+    #CHROMA_PORT: int = 8001
+    #CHROMA_COLLECTION_REPORTS: str = "sample_reports"
+    #CHROMA_COLLECTION_ASSETS: str = "client_assets"
 
     # ── LLM ───────────────────────────────────────────────────────────────────
     ANTHROPIC_API_KEY: str = ""

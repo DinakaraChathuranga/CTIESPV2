@@ -10,9 +10,11 @@ All tasks follow the same pattern:
 import asyncio
 import logging
 import time
+import os
 from datetime import datetime
 
 from workers.celery_app import app
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -161,12 +163,12 @@ def poll_epss_task(self):
 @app.task(name="workers.tasks.generate_report_task", bind=True, max_retries=1,
           time_limit=300, soft_time_limit=270)
 def generate_report_task(self, alert_id: str):
-    """Generate Claude AI report + WeasyPrint PDF for an approved alert."""
+    """Generate AI report + DOCX document for an approved alert."""
     async def _generate():
         from core.database import AsyncSessionLocal
         from models.db_models import Alert, Report
         from services.reporting.report_writer import generate_report_data
-        from services.reporting.pdf_renderer import render_pdf
+        from services.reporting.docx_generator import generate_docx
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as db:
@@ -181,18 +183,29 @@ def generate_report_task(self, alert_id: str):
 
             logger.info(f"[Report] Generating: {cve.cve_ids} → {client.name}")
 
-            # Step 1 — AI generation with RAG
+            # Step 1 — AI generation with Postgres RAG
             report_data, rag_filenames = await generate_report_data(cve, client, alert)
 
-            # Step 2 — PDF rendering
+            # Step 2 — DOCX rendering
             alert_number = report_data.get("alert_number", "ADVISORY")
-            pdf_path, pdf_filename = await render_pdf(report_data, client.name, alert_number)
+            
+            # Ensure the output directory exists
+            os.makedirs(settings.REPORT_OUTPUT_DIR, exist_ok=True)
+            
+            # Generate the docx filename and output path
+            pdf_filename = f"{alert_number}_advisory.docx"
+            pdf_path = os.path.join(settings.REPORT_OUTPUT_DIR, pdf_filename)
+            
+            # Call the updated DOCX generator
+            generate_docx(report_data, client.name, alert_number, pdf_path)
 
             # Step 3 — Upsert report row (handles regeneration)
             existing = (await db.execute(
                 select(Report).where(Report.alert_id == alert.id)
             )).scalar_one_or_none()
 
+            # Note: We keep the DB columns named pdf_path and pdf_filename to avoid schema migrations,
+            # but they now store the .docx file references.
             if existing:
                 existing.alert_number      = alert_number
                 existing.report_data       = report_data
@@ -216,11 +229,11 @@ def generate_report_task(self, alert_id: str):
 
             await db.commit()
             logger.info(
-                f"[Report] Done: {alert_number} | PDF: {pdf_filename} "
+                f"[Report] Done: {alert_number} | DOCX: {pdf_filename} "
                 f"| RAG examples: {len(rag_filenames)}"
             )
             return {"report_id": report_id, "alert_number": alert_number,
-                    "pdf": pdf_filename, "rag_used": rag_filenames}
+                    "docx": pdf_filename, "rag_used": rag_filenames}
 
     return _run(_generate())
 
