@@ -3,7 +3,7 @@ OpenAI-powered manual match verification.
 
 This is user-initiated by an analyst from the alert page.
 It does NOT approve or reject alerts automatically.
-It only returns and stores the AI verdict.
+It only returns and stores the AI verdict, confidence, reason, and recommendation.
 """
 
 import json
@@ -61,13 +61,13 @@ Rules:
 8. If the product is clearly different, answer NOT_MATCHED.
 9. If the product is clearly affected, answer MATCHED.
 
-Return exactly this JSON structure:
-{
+Return exactly this JSON structure (no other text, no markdown):
+{{
   "verdict": "MATCHED | NOT_MATCHED | UNCERTAIN",
   "confidence": 0.0,
   "reason": "One clear sentence explaining the decision.",
   "recommended_action": "Short analyst recommendation."
-}
+}}
 """
 
 
@@ -88,8 +88,8 @@ async def verify_cve_asset_match(
         return {
             "verdict": "ERROR",
             "confidence": 0.0,
-            "reason": "OPENAI_API_KEY is not configured.",
-            "recommended_action": "Configure OPENAI_API_KEY in .env and rebuild the backend.",
+            "reason": "OPENAI_API_KEY is not configured in .env.",
+            "recommended_action": "Set OPENAI_API_KEY in .env and restart the backend.",
             "error": "missing_openai_api_key",
         }
 
@@ -114,14 +114,14 @@ async def verify_cve_asset_match(
             model=settings.OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
+                {"role": "user",   "content": prompt},
             ],
             temperature=0,
             max_tokens=300,
             response_format={"type": "json_object"},
         )
 
-        raw = response.choices[0].message.content
+        raw  = response.choices[0].message.content
         data = json.loads(raw)
 
         verdict = str(data.get("verdict", "UNCERTAIN")).upper().strip()
@@ -132,35 +132,30 @@ async def verify_cve_asset_match(
             confidence = float(data.get("confidence", 0.0))
         except Exception:
             confidence = 0.0
-
         confidence = max(0.0, min(confidence, 1.0))
 
-        reason = str(data.get("reason", "No reason provided.")).strip()
+        reason             = str(data.get("reason",             "No reason provided.")).strip()
         recommended_action = str(data.get("recommended_action", "Manual analyst review required.")).strip()
 
         logger.info(
             "[AI Verify] %s vs %s/%s -> %s %.2f",
-            cve_id,
-            client_name,
-            asset_name,
-            verdict,
-            confidence,
+            cve_id, client_name, asset_name, verdict, confidence,
         )
 
         return {
-            "verdict": verdict,
-            "confidence": confidence,
-            "reason": reason,
+            "verdict":            verdict,
+            "confidence":         confidence,
+            "reason":             reason,
             "recommended_action": recommended_action,
-            "error": None,
+            "error":              None,
         }
 
     except Exception as e:
-        logger.error("[AI Verify] OpenAI verification failed: %s", e, exc_info=True)
+        logger.error("[AI Verify] OpenAI call failed: %s", e, exc_info=True)
         return {
-            "verdict": "ERROR",
-            "confidence": 0.0,
-            "reason": str(e),
+            "verdict":            "ERROR",
+            "confidence":         0.0,
+            "reason":             str(e),
             "recommended_action": "Manual analyst review required.",
-            "error": str(e),
+            "error":              str(e),
         }

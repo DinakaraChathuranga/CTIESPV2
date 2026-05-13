@@ -45,33 +45,44 @@ async def create_alerts_for_cve(
 
         safe_score = min(float(match.score or 0), 1.0)
 
-alert = Alert(
-    cve_id=cve.id,
-    client_id=match.client_id,
-    match_method=match.method,
-    match_score=safe_score,
-    raw_match_score=safe_score,
-    boosted_match_score=safe_score,
-    match_decision="needs_review" if match.method == "semantic" else "confirmed_match",
-    match_reason=(
-        "CPE/product match found." if match.method == "cpe"
-        else "Semantic product similarity matched. Analyst review recommended."
-    ),
-    matched_assets=match.matched_assets,
-    matched_cpes=match.matched_cpes,
-)
+        # ── FIXED: correct indentation — all lines inside the for loop ────────
+        alert = Alert(
+            cve_id=cve.id,
+            client_id=match.client_id,
+            match_method=match.method,
+            match_score=safe_score,
+            raw_match_score=safe_score,
+            boosted_match_score=safe_score,
+            match_decision=(
+                "confirmed_match" if match.method == "cpe" else "needs_review"
+            ),
+            match_reason=(
+                "CPE/product match found."
+                if match.method == "cpe"
+                else "Semantic product similarity matched. Analyst review recommended."
+            ),
+            matched_assets=match.matched_assets,
+            matched_cpes=match.matched_cpes,
+        )
         db.add(alert)
         try:
             await db.flush()   # catch constraint error per-row
             created += 1
             match_summaries.append(match.to_dict())
             logger.info(
-                f"[Alert] Created for CVE={cve.cve_ids} → client={match.client_name} "
-                f"method={match.method} score={match.score:.3f}"
+                "[Alert] Created for CVE=%s → client=%s method=%s score=%.3f",
+                cve.cve_ids,
+                match.client_name,
+                match.method,
+                safe_score,
             )
         except IntegrityError:
             await db.rollback()
-            logger.debug(f"[Alert] Duplicate skipped: CVE={cve.cve_ids} client={match.client_id}")
+            logger.debug(
+                "[Alert] Duplicate skipped: CVE=%s client=%s",
+                cve.cve_ids,
+                match.client_id,
+            )
 
     if created:
         await db.commit()
