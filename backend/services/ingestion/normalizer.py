@@ -145,10 +145,15 @@ async def upsert_cves(
             published_at=norm.published_at,
             raw_data=norm.raw_data,
         )
-        db.add(cve)
-        new_count += 1
+        try:
+            db.add(cve)
+            await db.commit()
+            new_count += 1
+        except Exception as e:
+            await db.rollback()
+            logger.warning(f"[Normalizer] Skipped duplicate {norm.cve_ids}: {e}")
+            skipped_count += 1
 
-    await db.commit()
     return new_count, skipped_count
 
 

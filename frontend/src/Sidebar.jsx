@@ -1,7 +1,7 @@
 // src/Sidebar.jsx
 import { T } from './ui.jsx';
 
-const NAV = [
+const NAV_BASE = [
   { id: 'dashboard', icon: '⬡', label: 'Dashboard' },
   { id: 'clients',   icon: '◈', label: 'Clients & Assets' },
   { id: 'feed',      icon: '◉', label: 'CVE Feed' },
@@ -10,13 +10,18 @@ const NAV = [
   { id: 'samples',   icon: '📄', label: 'Sample Reports' },
 ];
 
-export default function Sidebar({ view, setView, counts, health }) {
+const NAV_ADMIN = { id: 'users', icon: '👥', label: 'Users' };
+
+export default function Sidebar({ view, setView, counts, health, user, isAdmin, onLogout }) {
+  const nav = isAdmin ? [...NAV_BASE, NAV_ADMIN] : NAV_BASE;
+
   return (
     <div style={{
       width: 232, background: T.sidebar, borderRight: `1px solid ${T.border}`,
       display: 'flex', flexDirection: 'column', height: '100vh',
       position: 'sticky', top: 0, flexShrink: 0,
     }}>
+      {/* Logo */}
       <div style={{ padding: '22px 20px 18px', borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 36, height: 36, background: T.red, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🛡</div>
@@ -27,10 +32,11 @@ export default function Sidebar({ view, setView, counts, health }) {
         </div>
       </div>
 
+      {/* Navigation */}
       <nav style={{ padding: '12px 10px', flex: 1 }}>
-        {NAV.map(n => {
+        {nav.map(n => {
           const active = view === n.id;
-          const cnt = counts?.[n.id] || 0;
+          const cnt = n.id === 'alerts' ? (counts?.alerts || 0) : 0;
           return (
             <button key={n.id} onClick={() => setView(n.id)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10,
@@ -66,11 +72,41 @@ export default function Sidebar({ view, setView, counts, health }) {
         </div>
       )}
 
-      <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="pulse" style={{ width: 7, height: 7, background: T.green, borderRadius: '50%' }} />
-          <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, letterSpacing: '.06em' }}>SYSTEM ACTIVE</span>
-        </div>
+      {/* User info + logout */}
+      <div style={{ padding: '12px 14px', borderTop: `1px solid ${T.border}` }}>
+        {user && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 6,
+              background: user.role === 'security_admin' ? 'rgba(220,38,38,.2)' : 'rgba(37,99,235,.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: T.head, fontWeight: 800, fontSize: 13,
+              color: user.role === 'security_admin' ? T.red : T.blue,
+              flexShrink: 0,
+            }}>
+              {user.username[0].toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: T.head, fontSize: 12, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.username}
+              </div>
+              <div style={{ fontFamily: T.mono, fontSize: 9, color: user.role === 'security_admin' ? T.red : T.blue, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                {user.role === 'security_admin' ? 'Admin' : 'Reader'}
+              </div>
+            </div>
+          </div>
+        )}
+        <button onClick={onLogout} style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
+          background: 'transparent', color: T.muted, cursor: 'pointer',
+          fontFamily: T.head, fontSize: 12, transition: 'all .12s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,38,38,.1)'; e.currentTarget.style.color = T.red; e.currentTarget.style.borderColor = T.red + '44'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted; e.currentTarget.style.borderColor = T.border; }}
+        >
+          <span style={{ fontSize: 12 }}>⏻</span> Sign Out
+        </button>
       </div>
     </div>
   );

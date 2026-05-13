@@ -1,15 +1,17 @@
-# main.py  — FastAPI application entry point
-import logging
+# main.py
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from core.config import settings
 from core.database import init_db
+from api.auth import auth_router
 from api.routes import (
     clients_router, cves_router, alerts_router,
     reports_router, samples_router, system_router,
@@ -25,21 +27,17 @@ logger = logging.getLogger("cti")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown logic."""
     logger.info("=== CTI Platform v2.0 starting ===")
 
-    # 1. Initialize database (create tables, enable pgvector)
     await init_db()
 
-    # 2. Pre-load embedding model (avoids cold-start on first request)
     try:
         from services.matching.semantic_matcher import get_model
         await asyncio.get_event_loop().run_in_executor(None, get_model)
-        logger.info("Embedding model ready")
+        logger.info(f"Embedding model ready: {settings.EMBEDDING_MODEL}")
     except Exception as e:
         logger.warning(f"Embedding model load warning: {e}")
 
-    # 3. Initial data seed: trigger first poll if DB is empty
     try:
         from core.database import AsyncSessionLocal
         from models.db_models import CVE
@@ -69,7 +67,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# ── Middleware ─────────────────────────────────────────────────────────────────
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
@@ -79,8 +76,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ────────────────────────────────────────────────────────────────────
 PREFIX = "/api"
+app.include_router(auth_router,    prefix=PREFIX)
 app.include_router(clients_router, prefix=PREFIX)
 app.include_router(cves_router,    prefix=PREFIX)
 app.include_router(alerts_router,  prefix=PREFIX)
@@ -88,17 +85,10 @@ app.include_router(reports_router, prefix=PREFIX)
 app.include_router(samples_router, prefix=PREFIX)
 app.include_router(system_router,  prefix=PREFIX)
 
-# Serve generated PDF files
-import os
 os.makedirs(settings.REPORT_OUTPUT_DIR, exist_ok=True)
 app.mount("/files/reports", StaticFiles(directory=settings.REPORT_OUTPUT_DIR), name="reports")
 
 
 @app.get("/")
 async def root():
-    return {
-        "name": "CTI Automation Platform",
-        "version": "2.0.0",
-        "docs": "/docs",
-        "status": "running",
-    }
+    return {"name": "CTI Automation Platform", "version": "2.0.0", "docs": "/docs", "status": "running"}

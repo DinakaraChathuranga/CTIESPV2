@@ -4,6 +4,64 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+
+class SetupRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class PasswordChangeRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v, info):
+        if "new_password" in info.data and v != info.data["new_password"]:
+            raise ValueError("Passwords do not match")
+        return v
+
+
+class AdminPasswordResetRequest(BaseModel):
+    new_password: str = Field(..., min_length=8)
+
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8)
+    role: str = "security_reader"
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v):
+        if v not in ("security_reader", "security_admin"):
+            raise ValueError("role must be security_reader or security_admin")
+        return v
+
+
+class UserOut(BaseModel):
+    id: str
+    username: str
+    role: str
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
 class AssetIn(BaseModel):
@@ -72,6 +130,8 @@ class CVECreate(BaseModel):
     remediation: Optional[str] = None
     refs: List[str] = []
     vendor_advisory: Optional[str] = None
+    direct_client_id: Optional[str] = None
+    direct_asset_name: Optional[str] = None
 
     @field_validator("severity")
     @classmethod
@@ -116,12 +176,26 @@ class AlertOut(BaseModel):
     status: str
     match_method: Optional[str]
     match_score: Optional[float]
+    raw_match_score: Optional[float] = None
+    boosted_match_score: Optional[float] = None
+    match_decision: Optional[str] = None
+    match_reason: Optional[str] = None
+
+    ai_verdict: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    ai_reason: Optional[str] = None
+    ai_recommended_action: Optional[str] = None
+    ai_verified_at: Optional[datetime] = None
+    ai_verified_by: Optional[str] = None
+    ai_model: Optional[str] = None
     matched_assets: Optional[List[str]]
     matched_cpes: Optional[List[str]]
     created_at: datetime
     reviewed_at: Optional[datetime]
     reviewed_by: Optional[str]
     notes: Optional[str]
+    declined_at: Optional[datetime]
+    restored_at: Optional[datetime]
     cve: Optional[CVEOut] = None
     client: Optional[ClientOut] = None
 
@@ -132,7 +206,7 @@ class AlertOut(BaseModel):
 class AlertAction(BaseModel):
     status: str
     notes: Optional[str] = None
-    reviewed_by: str = "analyst"
+    reviewed_by: Optional[str] = None  # overridden by auth token on server
 
     @field_validator("status")
     @classmethod
@@ -140,6 +214,10 @@ class AlertAction(BaseModel):
         if v not in ("approved", "rejected", "pending"):
             raise ValueError("status must be approved, rejected, or pending")
         return v
+
+class BulkApproveRequest(BaseModel):
+    alert_ids: List[str]
+    notes: Optional[str] = None
 
 
 # ─── Reports ──────────────────────────────────────────────────────────────────

@@ -238,6 +238,20 @@ def generate_report_task(self, alert_id: str):
     return _run(_generate())
 
 
+
+# ─── Full CVE re-matching ─────────────────────────────────────────────────────
+
+@app.task(name="workers.tasks.rematch_all_cves_task", time_limit=3600, soft_time_limit=3500)
+def rematch_all_cves_task():
+    """Re-run matching for all existing HIGH/CRITICAL CVEs with current threshold."""
+    async def _rematch():
+        from core.database import AsyncSessionLocal
+        from services.matching.engine import rematch_all_cves
+        async with AsyncSessionLocal() as db:
+            result = await rematch_all_cves(db)
+        return result
+    return _run(_rematch())
+
 # ─── Asset embedding ──────────────────────────────────────────────────────────
 
 @app.task(name="workers.tasks.embed_assets_task")

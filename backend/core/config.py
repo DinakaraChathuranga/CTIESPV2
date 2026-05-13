@@ -10,17 +10,16 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     FRONTEND_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
+    # ── Auth / JWT ────────────────────────────────────────────────────────────
+    # IMPORTANT: Set a strong random secret in production .env
+    JWT_SECRET: str = "change-this-to-a-random-secret-in-production"
+    JWT_EXPIRE_HOURS: int = 8
+
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://cti:ctipassword@localhost:5432/ctidb"
 
     # ── Redis / Celery ────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
-
-    # ── ChromaDB ──────────────────────────────────────────────────────────────
-    #CHROMA_HOST: str = "localhost"
-    #CHROMA_PORT: int = 8001
-    #CHROMA_COLLECTION_REPORTS: str = "sample_reports"
-    #CHROMA_COLLECTION_ASSETS: str = "client_assets"
 
     # ── LLM ───────────────────────────────────────────────────────────────────
     ANTHROPIC_API_KEY: str = ""
@@ -35,9 +34,10 @@ class Settings(BaseSettings):
     MAX_REPORT_TOKENS: int = 4096
 
     # ── Embedding model ───────────────────────────────────────────────────────
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    SEMANTIC_MATCH_THRESHOLD: float = 0.55   # cosine similarity min (0–1)
-    CPE_MATCH_BOOST: float = 1.0             # CPE exact match gets priority
+    # all-mpnet-base-v2: 768-dim, CPU-friendly, strong technical language understanding
+    EMBEDDING_MODEL: str = "all-mpnet-base-v2"
+    SEMANTIC_MATCH_THRESHOLD: float = 0.55
+    CPE_MATCH_BOOST: float = 1.0
 
     # ── CTI Feed polling ──────────────────────────────────────────────────────
     NVD_API_KEY: str = ""
@@ -45,15 +45,12 @@ class Settings(BaseSettings):
     EPSS_API_URL: str = "https://api.first.org/data/v1/epss"
     CISA_KEV_URL: str = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
-    # Severity threshold for auto-ingest (CRITICAL / HIGH / MEDIUM / LOW)
     MIN_SEVERITY: str = "HIGH"
-    # Days back to fetch on first run
     INITIAL_LOOKBACK_DAYS: int = 3
-    # Polling schedules (cron strings for Celery beat)
-    POLL_NVD_CRON: str = "0 */6 * * *"       # every 6h
-    POLL_CISA_CRON: str = "30 */6 * * *"     # every 6h offset
-    POLL_RSS_CRON: str = "*/30 * * * *"      # every 30 min
-    POLL_EPSS_CRON: str = "0 4 * * *"        # daily at 04:00
+    POLL_NVD_CRON: str = "0 */6 * * *"
+    POLL_CISA_CRON: str = "30 */6 * * *"
+    POLL_RSS_CRON: str = "*/30 * * * *"
+    POLL_EPSS_CRON: str = "0 4 * * *"
 
     # ── RSS Feeds ─────────────────────────────────────────────────────────────
     RSS_FEEDS: List[str] = [
@@ -63,7 +60,6 @@ class Settings(BaseSettings):
         "https://packetstormsecurity.com/headlines.xml",
         "https://www.darkreading.com/rss.xml",
         "https://feeds.feedburner.com/Securityweek",
-        # Vendor security advisories
         "https://tools.cisco.com/security/center/rss.x?cat=High",
         "https://support.microsoft.com/rss/security",
     ]
@@ -71,10 +67,10 @@ class Settings(BaseSettings):
     # ── Report generation ─────────────────────────────────────────────────────
     REPORT_OUTPUT_DIR: str = "generated_reports"
     SAMPLE_REPORTS_DIR: str = "sample_reports"
-    RAG_NUM_EXAMPLES: int = 3        # How many similar reports to inject as style examples
-    RAG_MIN_SIMILARITY: float = 0.4  # Minimum similarity to use as RAG example
+    RAG_NUM_EXAMPLES: int = 3
+    RAG_MIN_SIMILARITY: float = 0.4
 
-    # ── SMTP (Phase 2 — keep existing) ───────────────────────────────────────
+    # ── SMTP ──────────────────────────────────────────────────────────────────
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

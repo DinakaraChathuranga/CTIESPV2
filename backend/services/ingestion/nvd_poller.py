@@ -98,6 +98,20 @@ def _nvd_item_to_normalized(item: dict) -> Optional[NormalizedCVE]:
         return None
 
     cpe_strings, products = _get_cpe_data(item)
+    # Fallback: extract products from title/description when NVD has no CPE data yet
+    if not products:
+        title_text = item.get("descriptions", [{}])[0].get("value", "") if isinstance(item, dict) else ""
+        import re
+        vendors = ["Microsoft","Cisco","Fortinet","VMware","Apache","Oracle","IBM",
+                   "Juniper","F5","Citrix","Atlassian","GitLab","Jenkins","WordPress",
+                   "Linux","Windows","Firefox","Chrome","Exchange","SharePoint",
+                   "Kubernetes","Docker","Splunk","MongoDB","PostgreSQL","MySQL",
+                   "Redis","Palo Alto","SolarWinds","Ivanti","Progress","OpenSSL",
+                   "nginx","Drupal","PHP","Safari","Edge","Azure","Android"]
+        combined = title_text
+        for v in vendors:
+            if v.lower() in combined.lower():
+                products.append(v)
     desc = _get_description(item)
     vuln_type = _get_weaknesses(item)
     refs = _get_refs(item)

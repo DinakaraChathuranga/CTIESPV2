@@ -2,19 +2,23 @@
 """
 Two-layer asset matching engine:
   Layer 1 — CPE exact matching (high precision)
-  Layer 2 — Semantic similarity with sentence-transformers all-MiniLM-L6-v2
+  Layer 2 — Semantic similarity via all-mpnet-base-v2 (pgvector)
 
-all-MiniLM-L6-v2 was chosen because:
-  - 80MB model, runs on CPU in ~5ms/sentence
-  - 384-dimensional embeddings, excellent for short product name similarity
-  - No API cost, fully private
-  - State-of-the-art for sentence similarity tasks
+all-mpnet-base-v2 was chosen because:
+  - 768-dimensional embeddings (vs 384 for MiniLM) — richer representation
+  - Strong understanding of technical English terminology
+  - CPU-optimised, ~420MB, no GPU required
+  - Significantly better than all-MiniLM-L6-v2 for technical product names
+    e.g. correctly relates "MS Exchange", "OWA", "ProxyShell"
+  - Pre-downloaded in Docker image — no cold start
 """
 import logging
 import re
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
 import numpy as np
 from sentence_transformers import SentenceTransformer
+
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -28,15 +32,14 @@ def get_model() -> SentenceTransformer:
     if _model is None:
         logger.info(f"Loading embedding model: {settings.EMBEDDING_MODEL}")
         _model = SentenceTransformer(settings.EMBEDDING_MODEL)
-        logger.info("Embedding model loaded")
+        logger.info(f"Embedding model loaded — dim={_model.get_sentence_embedding_dimension()}")
     return _model
 
 
 def embed(texts: List[str]) -> np.ndarray:
     """Return L2-normalised embeddings (for cosine similarity via dot product)."""
     model = get_model()
-    embs = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-    return embs
+    return model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
 
 def embed_one(text: str) -> List[float]:
@@ -61,6 +64,7 @@ _ABBREVS = {
     "nxos": "nexus operating system",
     "esxi": "esxi hypervisor",
     "vcenter": "vcenter server",
+    "owa": "outlook web access exchange",
     "ids": "intrusion detection system",
     "ips": "intrusion prevention system",
     "waf": "web application firewall",
@@ -79,6 +83,12 @@ _ABBREVS = {
     "app": "application",
     "ver": "version",
     "vm": "virtual machine",
+    "mfa": "multi factor authentication",
+    "sso": "single sign on",
+    "edr": "endpoint detection response",
+    "siem": "security information event management",
+    "soar": "security orchestration automation response",
+    "xdr": "extended detection response",
 }
 
 
@@ -86,29 +96,23 @@ def normalize_product(name: str) -> str:
     """Normalize a product name for embedding — expand abbreviations, lowercase, clean."""
     s = name.lower().strip()
     s = _REMOVE.sub(" ", s)
-    # Expand known abbreviations
     tokens = s.split()
-    expanded = []
-    for tok in tokens:
-        expanded.append(_ABBREVS.get(tok, tok))
+    expanded = [_ABBREVS.get(tok, tok) for tok in tokens]
     s = " ".join(expanded)
-    # Remove version numbers (they confuse similarity)
+    # Remove version numbers
     s = re.sub(r"\b\d+[\.\d]*\b", "", s)
-    return " ".join(s.split())  # collapse whitespace
+    return " ".join(s.split())
 
 
 # ─── CPE-based matching ───────────────────────────────────────────────────────
 
 def parse_cpe(cpe: str) -> dict:
-    """
-    Parse CPE 2.3 string: cpe:2.3:a:vendor:product:version:...
-    Returns dict with vendor, product, version.
-    """
+    """Parse CPE 2.3 string: cpe:2.3:a:vendor:product:version:..."""
     parts = cpe.split(":")
     if len(parts) < 6:
         return {}
     return {
-        "type":    parts[2],   # a=application, o=os, h=hardware
+        "type":    parts[2],
         "vendor":  parts[3].replace("_", " "),
         "product": parts[4].replace("_", " "),
         "version": parts[5] if len(parts) > 5 else "*",
@@ -116,20 +120,14 @@ def parse_cpe(cpe: str) -> dict:
 
 
 def cpe_matches_asset(cpe: str, asset_name: str, asset_cpe: Optional[str] = None) -> Tuple[bool, float]:
-    """
-    Check if a CVE CPE matches an asset.
-    Returns (matched, confidence_score).
-    """
-    # Direct CPE match (highest confidence)
+    """Check if a CVE CPE matches an asset. Returns (matched, confidence_score)."""
     if asset_cpe:
         cpe_parts = cpe.lower().split(":")
         asset_parts = asset_cpe.lower().split(":")
-        # Match vendor + product (ignore version wildcards)
         if len(cpe_parts) >= 5 and len(asset_parts) >= 5:
             if cpe_parts[3] == asset_parts[3] and cpe_parts[4] == asset_parts[4]:
                 return True, 1.0
 
-    # CPE string → asset name keyword matching
     parsed = parse_cpe(cpe)
     if not parsed:
         return False, 0.0
@@ -138,13 +136,12 @@ def cpe_matches_asset(cpe: str, asset_name: str, asset_cpe: Optional[str] = None
     vendor = parsed.get("vendor", "")
     product = parsed.get("product", "")
 
-    # Both vendor and product in asset name
     vendor_hit = vendor and vendor in asset_lower
     product_hit = product and product in asset_lower
 
     if vendor_hit and product_hit:
         return True, 0.95
-    if product_hit and len(product) > 4:  # meaningful product name
+    if product_hit and len(product) > 4:
         return True, 0.8
     if vendor_hit and len(vendor) > 3:
         return True, 0.5

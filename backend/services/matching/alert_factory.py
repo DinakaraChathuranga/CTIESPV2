@@ -43,14 +43,23 @@ async def create_alerts_for_cve(
         if existing.scalar_one_or_none():
             continue
 
-        alert = Alert(
-            cve_id=cve.id,
-            client_id=match.client_id,
-            match_method=match.method,
-            match_score=match.score,
-            matched_assets=match.matched_assets,
-            matched_cpes=match.matched_cpes,
-        )
+        safe_score = min(float(match.score or 0), 1.0)
+
+alert = Alert(
+    cve_id=cve.id,
+    client_id=match.client_id,
+    match_method=match.method,
+    match_score=safe_score,
+    raw_match_score=safe_score,
+    boosted_match_score=safe_score,
+    match_decision="needs_review" if match.method == "semantic" else "confirmed_match",
+    match_reason=(
+        "CPE/product match found." if match.method == "cpe"
+        else "Semantic product similarity matched. Analyst review recommended."
+    ),
+    matched_assets=match.matched_assets,
+    matched_cpes=match.matched_cpes,
+)
         db.add(alert)
         try:
             await db.flush()   # catch constraint error per-row

@@ -45,5 +45,10 @@ app.conf.update(
             "task": "workers.tasks.poll_epss_task",
             "schedule": crontab(minute=0, hour=4),
         },
+        "embed-assets-daily": {
+            "task": "workers.tasks.embed_assets_task",
+            "schedule": crontab(minute=0, hour=3),
+        },
+
     },
 )

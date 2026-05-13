@@ -1,16 +1,57 @@
-// src/views.jsx — Dashboard, Clients, Feed, Alerts, Reports, Samples
-import { useState, useEffect, useCallback } from 'react';
+// src/views.jsx
+import { useEffect, useMemo, useState } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   T, Badge, Btn, Card, Inp, Sel, Textarea, Lbl, Modal, SectionHead,
   Empty, LoadingPage, KV, StatusDot, FilterTabs, PriorityBar,
-  useConfirm, useAsync, sevStyle,
+  useConfirm, useAsync,
 } from './ui.jsx';
-import { clientsAPI, cvesAPI, alertsAPI, reportsAPI, samplesAPI, systemAPI } from './api.js';
+import {
+  clientsAPI, cvesAPI, alertsAPI, reportsAPI, samplesAPI, systemAPI, authAPI,
+} from './api.js';
 
 const fmt = d => d ? format(new Date(d), 'dd MMM yyyy HH:mm') : '—';
 const ago = d => d ? formatDistanceToNow(new Date(d), { addSuffix: true }) : '—';
+const pct = v => `${Math.round(Math.min(1, Number(v || 0)) * 100)}%`;
+const sevOptions = ['', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
+const INIT_CVE = {
+  cve_ids: '', title: '', vuln_type: '', severity: 'CRITICAL', cvss_score: '',
+  affected_products: '', cpe_strings: '', description: '', impact: '',
+  attack_vector: 'Remote (Unauthenticated)', remediation: '', refs: '',
+  direct_client_id: '', direct_asset_name: '',
+};
+
+function SmallMuted({ children }) {
+  return <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{children}</span>;
+}
+
+function Tag({ children, color = T.subtle }) {
+  return (
+    <span style={{
+      background: T.surface, border: `1px solid ${T.border}`, borderRadius: 5,
+      padding: '2px 7px', fontFamily: T.mono, fontSize: 10, color,
+      display: 'inline-flex', gap: 5, alignItems: 'center',
+    }}>{children}</span>
+  );
+}
+
+function AIStatus({ alert }) {
+  if (!alert?.ai_verdict) return <Tag>AI: not checked</Tag>;
+  const verdict = alert.ai_verdict;
+  const color = verdict === 'MATCHED' ? T.green : verdict === 'NOT_MATCHED' ? T.red : verdict === 'UNCERTAIN' ? T.orange : T.muted;
+  return <Tag color={color}>AI: {verdict}{alert.ai_confidence !== null && alert.ai_confidence !== undefined ? ` · ${pct(alert.ai_confidence)}` : ''}</Tag>;
+}
+
+function MatchInfo({ alert }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+      <Tag>{alert.match_method || 'match'} · {pct(alert.match_score)}</Tag>
+      {alert.match_decision && <Tag>{alert.match_decision}</Tag>}
+      <AIStatus alert={alert} />
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
@@ -18,17 +59,24 @@ const ago = d => d ? formatDistanceToNow(new Date(d), { addSuffix: true }) : '�
 
 export function Dashboard({ setView }) {
   const { data: stats, reload } = useAsync(() => systemAPI.stats(), []);
-  const { data: alerts } = useAsync(() => alertsAPI.list({ limit: 8 }), []);
-  const { data: cves }   = useAsync(() => cvesAPI.list({ limit: 6 }), []);
+  const { data: alerts, reload: reloadAlerts } = useAsync(() => alertsAPI.list({ limit: 8 }), []);
+  const { data: cves } = useAsync(() => cvesAPI.list({ limit: 6 }), []);
   const { data: health } = useAsync(() => systemAPI.health(), []);
-  const [polling, setPoll] = useState(false);
+  const [polling, setPolling] = useState(false);
 
-  useEffect(() => { const t = setInterval(reload, 25000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    const t = setInterval(() => { reload(); reloadAlerts(); }, 25000);
+    return () => clearInterval(t);
+  }, []);
 
   const triggerPoll = async () => {
-    setPoll(true);
-    try { await cvesAPI.poll('all'); setTimeout(reload, 4000); }
-    finally { setTimeout(() => setPoll(false), 3000); }
+    setPolling(true);
+    try {
+      await cvesAPI.poll('all');
+      setTimeout(() => { reload(); reloadAlerts(); }, 4000);
+    } finally {
+      setTimeout(() => setPolling(false), 3000);
+    }
   };
 
   const s = stats || {};
@@ -37,7 +85,7 @@ export function Dashboard({ setView }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>{label}</div>
-          <div style={{ fontFamily: T.head, fontSize: 40, fontWeight: 800, color, lineHeight: 1 }}>{value ?? '—'}</div>
+          <div style={{ fontFamily: T.head, fontSize: 38, fontWeight: 800, color, lineHeight: 1 }}>{value ?? '—'}</div>
           {sub && <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted, marginTop: 6 }}>{sub}</div>}
         </div>
         <span style={{ fontSize: 28, opacity: .2 }}>{icon}</span>
@@ -55,7 +103,7 @@ export function Dashboard({ setView }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {health && (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: '6px 14px' }}>
-              {[['DB', health.db], ['Redis', health.redis], ['Chroma', health.chromadb], ['Model', health.embedding_model_loaded]].map(([k, ok]) => (
+              {[['DB', health.db], ['Redis', health.redis], ['Model', health.embedding_model_loaded]].map(([k, ok]) => (
                 <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: ok ? T.green : T.red }} />
                   <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted }}>{k}</span>
@@ -67,7 +115,6 @@ export function Dashboard({ setView }) {
         </div>
       </div>
 
-      {/* Stat cards */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
         <StatCard label="Clients" value={s.clients} icon="◈" color={T.blue} sub="Monitored" />
         <StatCard label="Pending Alerts" value={s.alerts_pending} icon="◎" color={T.orange} sub="Awaiting review" />
@@ -75,47 +122,24 @@ export function Dashboard({ setView }) {
         <StatCard label="Reports Sent" value={s.reports_sent} icon="▣" color={T.green} sub={`${s.reports_draft || 0} drafts`} />
       </div>
 
-      {/* Poll status */}
-      <Card style={{ padding: '12px 18px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.1em' }}>Last Polls</div>
-          {[['NVD', s.last_poll_nvd], ['CISA KEV', s.last_poll_cisa], ['RSS', s.last_poll_rss]].map(([src, t]) => (
-            <div key={src} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{src}</span>
-              <span style={{ fontFamily: T.mono, fontSize: 11, color: t ? T.green : T.muted }}>
-                {t ? ago(t) : 'Never'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 20 }}>
-        {/* Recent alerts */}
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>Recent Alerts</div>
             <Btn sm onClick={() => setView('alerts')}>View all →</Btn>
           </div>
-          {(alerts || []).length === 0
-            ? <div style={{ fontFamily: T.head, color: T.muted, fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No alerts yet</div>
-            : (alerts || []).map(a => (
+          {(alerts || []).length === 0 ? <div style={{ fontFamily: T.head, color: T.muted, fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No alerts yet</div> : (alerts || []).map(a => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: `1px solid ${T.border}` }}>
               <StatusDot status={a.status} pulse={a.status === 'pending'} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: T.head, fontSize: 12, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {a.cve?.cve_ids} — {a.cve?.title?.slice(0, 60)}
-                </div>
-                <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>
-                  {a.client?.name} · {a.match_method} ({Math.round((a.match_score || 0) * 100)}%) · {ago(a.created_at)}
-                </div>
+                <div style={{ fontFamily: T.head, fontSize: 12, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.cve?.cve_ids} — {a.cve?.title?.slice(0, 70)}</div>
+                <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{a.client?.name} · {a.match_method} ({pct(a.match_score)}) · {ago(a.created_at)}</div>
               </div>
               <Badge sev={a.cve?.severity} />
             </div>
           ))}
         </Card>
 
-        {/* Latest CVEs */}
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>Latest CVEs</div>
@@ -125,10 +149,7 @@ export function Dashboard({ setView }) {
             <div key={c.id} style={{ padding: '9px 0', borderBottom: `1px solid ${T.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                 <div style={{ fontFamily: T.mono, fontSize: 10, color: T.red }}>{c.cve_ids}</div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {c.is_kev && <span style={{ fontFamily: T.mono, fontSize: 9, color: T.red, background: T.redDim, padding: '1px 5px', borderRadius: 3, border: `1px solid ${T.red}44` }}>KEV</span>}
-                  <Badge sev={c.severity} />
-                </div>
+                <div style={{ display: 'flex', gap: 6 }}>{c.is_kev && <Tag color={T.red}>KEV</Tag>}<Badge sev={c.severity} /></div>
               </div>
               <div style={{ fontFamily: T.head, fontSize: 12, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
               <PriorityBar score={c.priority_score} />
@@ -140,13 +161,13 @@ export function Dashboard({ setView }) {
   );
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLIENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function Clients({ toast }) {
-  const { data: list, reload, loading } = useAsync(() => clientsAPI.list(), []);
+export function Clients({ toast, isAdmin }) {
+  const [search, setSearch] = useState('');
+  const { data: list, reload, loading } = useAsync(() => clientsAPI.list({ search: search || undefined }), [search]);
   const { confirm, Dialog } = useConfirm();
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', company: '' });
@@ -154,8 +175,8 @@ export function Clients({ toast }) {
   const [assetInput, setAssetInput] = useState({});
   const [assetCpe, setAssetCpe] = useState({});
 
-  const openNew  = () => { setForm({ name: '', email: '', company: '' }); setModal('new'); };
-  const openEdit = c  => { setForm({ name: c.name, email: c.email, company: c.company || '' }); setModal(c.id); };
+  const openNew = () => { setForm({ name: '', email: '', company: '' }); setModal('new'); };
+  const openEdit = c => { setForm({ name: c.name, email: c.email, company: c.company || '' }); setModal(c.id); };
 
   const save = async () => {
     if (!form.name || !form.email) return toast('Name and email required', 'error');
@@ -173,790 +194,659 @@ export function Clients({ toast }) {
     catch (e) { toast(e.message, 'error'); }
   });
 
-  const addAsset = async (client) => {
+  const addAsset = async client => {
     const name = (assetInput[client.id] || '').trim();
     if (!name) return;
     const cpe = (assetCpe[client.id] || '').trim() || null;
-    const updated = [...(client.assets || []).map(a => ({ asset_name: a.asset_name, cpe_string: a.cpe_string })),
-                     { asset_name: name, cpe_string: cpe }];
+    const updated = [...(client.assets || []).map(a => ({ asset_name: a.asset_name, cpe_string: a.cpe_string })), { asset_name: name, cpe_string: cpe }];
     try {
       await clientsAPI.setAssets(client.id, updated);
       setAssetInput(v => ({ ...v, [client.id]: '' }));
       setAssetCpe(v => ({ ...v, [client.id]: '' }));
-      toast(`Asset added — embedding in background`);
+      toast('Asset added — embedding in background');
       reload();
     } catch (e) { toast(e.message, 'error'); }
   };
 
   const removeAsset = async (client, assetName) => {
-    const updated = (client.assets || [])
-      .filter(a => a.asset_name !== assetName)
-      .map(a => ({ asset_name: a.asset_name, cpe_string: a.cpe_string }));
+    const updated = (client.assets || []).filter(a => a.asset_name !== assetName).map(a => ({ asset_name: a.asset_name, cpe_string: a.cpe_string }));
     try { await clientsAPI.setAssets(client.id, updated); reload(); }
     catch (e) { toast(e.message, 'error'); }
   };
 
-  if (loading) return <LoadingPage message="Loading clients…" />;
-
   return (
     <div className="slide-in" style={{ padding: 32 }}>
-      <SectionHead title="Clients & Asset Registry"
-        sub="Asset names are embedded with all-MiniLM-L6-v2 for semantic CVE matching. Add CPE strings for exact matching."
-        action={<Btn variant="primary" onClick={openNew}>+ Add Client</Btn>} />
+      <SectionHead title="Clients & Asset Registry" sub="Search clients and assets. Only security admins can edit the asset registry." action={isAdmin ? <Btn variant="primary" onClick={openNew}>+ Add Client</Btn> : null} />
 
-      {(modal === 'new' || (modal && modal !== 'new')) && (
+      <Card style={{ marginBottom: 18, padding: 14 }}><Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search client, company, email, asset, or CPE…" /></Card>
+
+      {isAdmin && (modal === 'new' || (modal && modal !== 'new')) && (
         <Modal title={modal === 'new' ? 'New Client' : 'Edit Client'} onClose={() => setModal(null)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div><Lbl>Client Name *</Lbl><Inp value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="Acme Corporation" /></div>
-            <div><Lbl>Security Contact Email *</Lbl><Inp value={form.email} onChange={e => setForm(f => ({...f, email: e.target.value}))} placeholder="security@acme.com" type="email" /></div>
-            <div><Lbl>Company / Division</Lbl><Inp value={form.company} onChange={e => setForm(f => ({...f, company: e.target.value}))} placeholder="Optional" /></div>
+            <div><Lbl>Client Name *</Lbl><Inp value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corporation" /></div>
+            <div><Lbl>Security Contact Email *</Lbl><Inp value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="security@acme.com" type="email" /></div>
+            <div><Lbl>Company / Division</Lbl><Inp value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} placeholder="Optional" /></div>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
-            <Btn variant="primary" onClick={save} loading={saving}>Save</Btn>
-            <Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn>
-          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 20 }}><Btn variant="primary" onClick={save} loading={saving}>Save</Btn><Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn></div>
         </Modal>
       )}
       {Dialog}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {(list || []).map(c => (
-          <Card key={c.id}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                <div style={{ width: 44, height: 44, background: T.surface, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.head, fontWeight: 800, fontSize: 20, color: T.red }}>{c.name[0]}</div>
-                <div>
-                  <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>{c.name}</div>
-                  <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>{c.email}</div>
-                  {c.company && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{c.company}</div>}
+      {loading ? <LoadingPage message="Loading clients…" /> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {(list || []).map(c => (
+            <Card key={c.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                  <div style={{ width: 44, height: 44, background: T.surface, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.head, fontWeight: 800, fontSize: 20, color: T.red }}>{c.name?.[0]}</div>
+                  <div><div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>{c.name}</div><div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>{c.email}</div>{c.company && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{c.company}</div>}</div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Btn sm onClick={() => openEdit(c)}>✎ Edit</Btn>
-                <Btn sm variant="danger" onClick={() => del(c)}>✕</Btn>
-              </div>
-            </div>
-
-            <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>
-              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>
-                Asset Registry ({(c.assets || []).length} products)
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14 }}>
-                {(c.assets || []).map(a => (
-                  <span key={a.id} style={{
-                    background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6,
-                    padding: '4px 10px', fontFamily: T.head, fontSize: 12, color: T.subtle,
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                  }}>
-                    {a.has_embedding && <span style={{ color: T.teal, fontSize: 10 }}>⊕</span>}
-                    {a.asset_name}
-                    {a.cpe_string && <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted }}>CPE</span>}
-                    <button onClick={() => removeAsset(c, a.asset_name)} style={{ background: 'none', border: 'none', color: T.muted, cursor: 'pointer', fontSize: 11 }}>✕</button>
-                  </span>
-                ))}
-                {!(c.assets || []).length && <span style={{ color: T.muted, fontSize: 12 }}>No assets — add products to enable CVE matching</span>}
+                {isAdmin && <div style={{ display: 'flex', gap: 8 }}><Btn sm onClick={() => openEdit(c)}>✎ Edit</Btn><Btn sm variant="danger" onClick={() => del(c)}>✕</Btn></div>}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8 }}>
-                <Inp value={assetInput[c.id] || ''} onChange={e => setAssetInput(v => ({...v, [c.id]: e.target.value}))}
-                  placeholder="Product name (e.g. Cisco FMC, Windows Server 2022)"
-                  onKeyDown={e => e.key === 'Enter' && addAsset(c)} />
-                <Inp value={assetCpe[c.id] || ''} onChange={e => setAssetCpe(v => ({...v, [c.id]: e.target.value}))}
-                  placeholder="CPE string (optional)" style={{ fontFamily: T.mono, fontSize: 11 }} />
-                <Btn variant="ghost" onClick={() => addAsset(c)} sm>+ Add</Btn>
+              <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>
+                <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>Asset Registry ({(c.assets || []).length} products)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: isAdmin ? 14 : 0 }}>
+                  {(c.assets || []).map(a => (
+                    <span key={a.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: '4px 10px', fontFamily: T.head, fontSize: 12, color: T.subtle, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {a.has_embedding && <span style={{ color: T.teal, fontSize: 10 }}>⊕</span>}{a.asset_name}{a.cpe_string && <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted }}>CPE</span>}{isAdmin && <button onClick={() => removeAsset(c, a.asset_name)} style={{ background: 'none', border: 'none', color: T.muted, cursor: 'pointer', fontSize: 11 }}>✕</button>}
+                    </span>
+                  ))}
+                  {!(c.assets || []).length && <span style={{ color: T.muted, fontSize: 12 }}>No assets — add products to enable CVE matching</span>}
+                </div>
+
+                {isAdmin && <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8 }}>
+                    <Inp value={assetInput[c.id] || ''} onChange={e => setAssetInput(v => ({ ...v, [c.id]: e.target.value }))} placeholder="Product name (e.g. FortiGate FortiOS 7.4)" onKeyDown={e => e.key === 'Enter' && addAsset(c)} />
+                    <Inp value={assetCpe[c.id] || ''} onChange={e => setAssetCpe(v => ({ ...v, [c.id]: e.target.value }))} placeholder="CPE string (optional)" style={{ fontFamily: T.mono, fontSize: 11 }} />
+                    <Btn variant="ghost" onClick={() => addAsset(c)} sm>+ Add</Btn>
+                  </div>
+                  <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, marginTop: 6 }}>Non-admin users can view assets only. They cannot add, edit, or delete assets.</div>
+                </>}
               </div>
-              <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, marginTop: 6 }}>
-                ⊕ = embedding ready · CPE = exact match enabled · Press Enter to add quickly
-              </div>
-            </div>
-          </Card>
-        ))}
-        {!(list || []).length && <Empty icon="◈" message="No clients yet. Add a client to start monitoring." />}
-      </div>
+            </Card>
+          ))}
+          {!(list || []).length && <Empty icon="◈" message="No clients or assets matched your search." />}
+        </div>
+      )}
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CVE FEED
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const INIT_CVE = {
-  cve_ids:'', title:'', vuln_type:'', severity:'CRITICAL', cvss_score:'',
-  affected_products:'', cpe_strings:'', description:'', impact:'',
-  attack_vector:'Remote (Unauthenticated)', remediation:'', refs:'',
-};
-
-const PAGE_SIZE = 50;
-
-export function Feed({ toast }) {
+export function Feed({ toast, isAdmin }) {
   const [sev, setSev] = useState('');
   const [search, setSearch] = useState('');
   const [kev, setKev] = useState(false);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(null);
-
-  // Reset to page 0 when filters change
-  useEffect(() => setPage(0), [sev, search, kev]);
-
-  const { data: list, reload, loading } = useAsync(() =>
-    cvesAPI.list({ severity: sev || undefined, search: search || undefined, is_kev: kev || undefined, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
-    [sev, search, kev, page]);
-
-  // Fetch total count separately for pagination display
-  useEffect(() => {
-    cvesAPI.count({ severity: sev || undefined, search: search || undefined, is_kev: kev || undefined })
-      .then(r => setTotal(r.total))
-      .catch(() => setTotal(null));
-  }, [sev, search, kev]);
-  const [showForm, setForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [f, setF] = useState(INIT_CVE);
   const [saving, setSaving] = useState(false);
-  const [polling, setPoll] = useState('');
-  const [expanded, setExp] = useState({});
+  const [polling, setPolling] = useState('');
+  const [expanded, setExpanded] = useState({});
+  const [clients, setClients] = useState([]);
   const { confirm, Dialog } = useConfirm();
 
-  const poll = async (src) => {
-    setPoll(src);
-    try { await cvesAPI.poll(src); toast(`Poll triggered for ${src} — check back in ~30s`, 'warn'); setTimeout(reload, 20000); }
-    catch (e) { toast(e.message, 'error'); }
-    finally { setTimeout(() => setPoll(''), 3000); }
-  };
+  useEffect(() => setPage(0), [sev, search, kev]);
+  useEffect(() => { clientsAPI.list().then(setClients).catch(() => setClients([])); }, []);
+
+  const { data: list, reload, loading } = useAsync(() => cvesAPI.list({ severity: sev || undefined, search: search || undefined, is_kev: kev || undefined, limit: 50, offset: page * 50 }), [sev, search, kev, page]);
+  useEffect(() => { cvesAPI.count({ severity: sev || undefined, search: search || undefined, is_kev: kev || undefined }).then(r => setTotal(r.total)).catch(() => setTotal(null)); }, [sev, search, kev]);
+
+  const selectedClient = useMemo(() => clients.find(c => c.id === f.direct_client_id), [clients, f.direct_client_id]);
+
+  const poll = async src => { setPolling(src); try { await cvesAPI.poll(src); toast(`Poll triggered for ${src}`, 'warn'); setTimeout(reload, 20000); } catch (e) { toast(e.message, 'error'); } finally { setTimeout(() => setPolling(''), 3000); } };
 
   const submit = async () => {
-    if (!f.cve_ids || !f.title) return toast('CVE IDs and Title are required', 'error');
+    if (!f.cve_ids || !f.title) return toast('CVE ID and title are required', 'error');
     setSaving(true);
     try {
       const r = await cvesAPI.create({
-        cve_ids: f.cve_ids.trim(),
-        title: f.title.trim(),
-        vuln_type: f.vuln_type,
-        severity: f.severity,
+        cve_ids: f.cve_ids.trim(), title: f.title.trim(), vuln_type: f.vuln_type, severity: f.severity,
         cvss_score: f.cvss_score ? parseFloat(f.cvss_score) : null,
         affected_products: f.affected_products.split(',').map(s => s.trim()).filter(Boolean),
         cpe_strings: f.cpe_strings.split('\n').map(s => s.trim()).filter(Boolean),
         description: f.description,
         impact: f.impact.split('\n').map(s => s.trim()).filter(Boolean),
-        attack_vector: f.attack_vector,
-        remediation: f.remediation,
+        attack_vector: f.attack_vector, remediation: f.remediation,
         refs: f.refs.split('\n').map(s => s.trim()).filter(Boolean),
+        direct_client_id: f.direct_client_id || null,
+        direct_asset_name: f.direct_asset_name || null,
       });
-      toast(`CVE ingested — ${r.alerts_created} alert(s) for: ${(r.matched_clients || []).join(', ') || 'no matches'}`);
-      setF(INIT_CVE); setForm(false); reload();
+      toast(`CVE ingested — ${r.alerts_created} alert(s): ${(r.matched_clients || []).join(', ') || 'no matches'}`);
+      setF(INIT_CVE); setShowForm(false); reload();
     } catch (e) { toast(e.message, 'error'); }
     finally { setSaving(false); }
   };
 
-  const del = (cve) => confirm(`Delete ${cve.cve_ids}?`, async () => {
-    try { await cvesAPI.delete(cve.id); reload(); toast('CVE deleted'); }
-    catch (e) { toast(e.message, 'error'); }
-  });
-
-  const inp = (field, ph) => <Inp value={f[field]} onChange={e => setF(p => ({...p, [field]: e.target.value}))} placeholder={ph} />;
-  const area = (field, ph, rows) => <Textarea value={f[field]} onChange={e => setF(p => ({...p, [field]: e.target.value}))} placeholder={ph} rows={rows} />;
+  const del = cve => confirm(`Delete ${cve.cve_ids}?`, async () => { try { await cvesAPI.delete(cve.id); reload(); toast('CVE deleted'); } catch (e) { toast(e.message, 'error'); } });
+  const inp = (field, ph) => <Inp value={f[field]} onChange={e => setF(p => ({ ...p, [field]: e.target.value }))} placeholder={ph} />;
+  const area = (field, ph, rows) => <Textarea value={f[field]} onChange={e => setF(p => ({ ...p, [field]: e.target.value }))} placeholder={ph} rows={rows} />;
 
   return (
     <div className="slide-in" style={{ padding: 32 }}>
-      <SectionHead title="CVE Intelligence Feed"
-        sub="Auto-ingested from NVD, CISA KEV, and 8 security RSS feeds. All CVEs scored with CVSS + EPSS + KEV priority."
-        action={
-          <>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {['nvd','cisa','rss','all'].map(s => (
-                <Btn key={s} sm variant="ghost" loading={polling === s} onClick={() => poll(s)}>⟳ {s.toUpperCase()}</Btn>
-              ))}
-            </div>
-            <Btn variant="primary" sm onClick={() => setForm(v => !v)}>+ Manual Ingest</Btn>
-          </>
-        }
-      />
+      <SectionHead title="CVE Intelligence Feed" sub="Auto-ingested CVEs and manual CVE advisory creation." action={<><div style={{ display: 'flex', gap: 6 }}>{['nvd', 'cisa', 'rss', 'all'].map(src => <Btn key={src} sm variant="ghost" loading={polling === src} onClick={() => poll(src)}>⟳ {src.toUpperCase()}</Btn>)}</div>{isAdmin && <Btn variant="primary" sm onClick={() => setShowForm(v => !v)}>+ Manual Ingest</Btn>}</>} />
 
-      {showForm && (
-        <Card style={{ marginBottom: 22, borderColor: `${T.red}44` }}>
-          <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 18 }}>Manual CVE Entry</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div><Lbl>CVE ID(s) *</Lbl>{inp('cve_ids', 'CVE-2026-20079, CVE-2026-20131')}</div>
-            <div><Lbl>Title *</Lbl>{inp('title', 'Cisco FMC Critical Vulnerabilities')}</div>
-            <div><Lbl>Type</Lbl>{inp('vuln_type', 'Authentication Bypass & Remote Code Execution')}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div><Lbl>Severity</Lbl>
-                <Sel value={f.severity} onChange={e => setF(p => ({...p, severity: e.target.value}))}>
-                  {['CRITICAL','HIGH','MEDIUM','LOW'].map(s => <option key={s}>{s}</option>)}
-                </Sel>
-              </div>
-              <div><Lbl>CVSS</Lbl>{inp('cvss_score', '10.0')}</div>
-            </div>
-            <div><Lbl>Affected Products (comma-sep)</Lbl>{inp('affected_products', 'Cisco FMC, Cisco SCC')}</div>
-            <div><Lbl>CPE Strings (one per line)</Lbl>{area('cpe_strings', 'cpe:2.3:a:cisco:firepower_management_center:*', 2)}</div>
-            <div><Lbl>Attack Vector</Lbl>{inp('attack_vector', 'Remote (Unauthenticated)')}</div>
-          </div>
-          <div style={{ display: 'grid', gap: 14, marginBottom: 18 }}>
-            <div><Lbl>Description</Lbl>{area('description', 'Full vulnerability description...', 4)}</div>
-            <div><Lbl>Impact (one per line)</Lbl>{area('impact', 'Bypass authentication\nExecute arbitrary code\nGain root access', 3)}</div>
-            <div><Lbl>Remediation</Lbl>{area('remediation', 'Apply the latest security patches...', 2)}</div>
-            <div><Lbl>References (one URL per line)</Lbl>{area('refs', 'https://...', 3)}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="primary" onClick={submit} loading={saving}>Submit & Match Clients</Btn>
-            <Btn variant="ghost" onClick={() => { setForm(false); setF(INIT_CVE); }}>Cancel</Btn>
-          </div>
-        </Card>
-      )}
+      {isAdmin && showForm && <Card style={{ marginBottom: 22, borderColor: `${T.red}44` }}>
+        <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 18 }}>Manual CVE Entry</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div><Lbl>CVE ID *</Lbl>{inp('cve_ids', 'CVE-2026-XXXXX')}</div>
+          <div><Lbl>Title *</Lbl>{inp('title', 'Product vulnerability title')}</div>
+          <div><Lbl>Type</Lbl>{inp('vuln_type', 'Remote Code Execution')}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}><div><Lbl>Severity</Lbl><Sel value={f.severity} onChange={e => setF(p => ({ ...p, severity: e.target.value }))}>{['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => <option key={s}>{s}</option>)}</Sel></div><div><Lbl>CVSS</Lbl>{inp('cvss_score', '9.8')}</div></div>
+          <div><Lbl>Affected Products</Lbl>{inp('affected_products', 'FortiOS, FortiGate')}</div>
+          <div><Lbl>CPE Strings</Lbl>{area('cpe_strings', 'cpe:2.3:o:fortinet:fortios:*', 2)}</div>
+          <div><Lbl>Attack Vector</Lbl>{inp('attack_vector', 'Remote (Unauthenticated)')}</div>
+          <div><Lbl>Direct Client Alert (optional)</Lbl><Sel value={f.direct_client_id} onChange={e => setF(p => ({ ...p, direct_client_id: e.target.value, direct_asset_name: '' }))}><option value="">Run normal matching engine</option>{(clients || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Sel></div>
+          {f.direct_client_id && <div><Lbl>Direct Asset Name</Lbl><Sel value={f.direct_asset_name} onChange={e => setF(p => ({ ...p, direct_asset_name: e.target.value }))}><option value="">No specific asset selected</option>{(selectedClient?.assets || []).map(a => <option key={a.id} value={a.asset_name}>{a.asset_name}</option>)}</Sel></div>}
+        </div>
+        <div style={{ display: 'grid', gap: 14, marginBottom: 18 }}><div><Lbl>Description</Lbl>{area('description', 'Full vulnerability description...', 4)}</div><div><Lbl>Impact</Lbl>{area('impact', 'Impact point 1\nImpact point 2', 3)}</div><div><Lbl>Remediation</Lbl>{area('remediation', 'Apply vendor patches...', 2)}</div><div><Lbl>References</Lbl>{area('refs', 'https://...', 3)}</div></div>
+        <div style={{ display: 'flex', gap: 8 }}><Btn variant="primary" onClick={submit} loading={saving}>{f.direct_client_id ? 'Create Direct Client Alert' : 'Submit & Match Clients'}</Btn><Btn variant="ghost" onClick={() => { setShowForm(false); setF(INIT_CVE); }}>Cancel</Btn></div>
+      </Card>}
 
-      {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-        <FilterTabs
-          options={[
-            { key: '', label: 'All' },
-            { key: 'CRITICAL', label: 'Critical', count: (list||[]).filter(c => c.severity==='CRITICAL').length },
-            { key: 'HIGH',     label: 'High',     count: (list||[]).filter(c => c.severity==='HIGH').length },
-            { key: 'MEDIUM',   label: 'Medium' },
-          ]}
-          active={sev} onChange={setSev}
-        />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: T.head, fontSize: 12, color: T.subtle, cursor: 'pointer' }}>
-          <input type="checkbox" checked={kev} onChange={e => setKev(e.target.checked)} />
-          CISA KEV only
-        </label>
-        <Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search CVE IDs or title…" style={{ flex: 1, maxWidth: 260 }} />
-        <span style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, marginLeft: 'auto' }}>
-          {total !== null ? `${total} CVEs total` : `${(list||[]).length} CVEs`}
-        </span>
+        <FilterTabs options={[{ key: '', label: 'All' }, { key: 'CRITICAL', label: 'Critical' }, { key: 'HIGH', label: 'High' }, { key: 'MEDIUM', label: 'Medium' }]} active={sev} onChange={setSev} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: T.head, fontSize: 12, color: T.subtle, cursor: 'pointer' }}><input type="checkbox" checked={kev} onChange={e => setKev(e.target.checked)} /> CISA KEV only</label>
+        <Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search CVE, product, or description…" style={{ flex: 1, maxWidth: 320 }} />
+        <SmallMuted>{total !== null ? `${total} CVEs total` : `${(list || []).length} CVEs`}</SmallMuted>
       </div>
 
       {Dialog}
-      {loading ? <LoadingPage message="Loading CVE feed…" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {(list || []).map(c => {
-            const isExp = expanded[c.id];
-            return (
-              <Card key={c.id} glow={c.severity==='CRITICAL' ? T.redGlow : c.is_kev ? 'rgba(220,38,38,.07)' : undefined}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 7 }}>
-                      <Badge sev={c.severity} />
-                      <span style={{ fontFamily: T.mono, fontSize: 10, color: T.red, background: T.redDim, padding: '1px 7px', borderRadius: 4 }}>{c.cve_ids}</span>
-                      {c.is_kev && <span style={{ fontFamily: T.mono, fontSize: 9, color: T.red, background: T.redDim, padding: '1px 6px', borderRadius: 3, border: `1px solid ${T.red}55`, fontWeight: 700 }}>🔴 KEV</span>}
-                      {c.cvss_score && <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>CVSS {c.cvss_score}</span>}
-                      {c.epss_score && <span style={{ fontFamily: T.mono, fontSize: 10, color: T.yellow }}>EPSS {(c.epss_score*100).toFixed(1)}%</span>}
-                      <span style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, background: T.surface, padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase' }}>{c.source}</span>
-                    </div>
-                    <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, marginBottom: 6 }}>{c.title}</div>
-                    <div style={{ marginBottom: 8 }}><PriorityBar score={c.priority_score} /></div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {(c.affected_products || []).slice(0, 5).map(p => (
-                        <span key={p} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: '2px 8px', fontFamily: T.mono, fontSize: 10, color: T.subtle }}>{p}</span>
-                      ))}
-                    </div>
-                    {isExp && (
-                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
-                        {c.description && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle, lineHeight: 1.65, marginBottom: 10 }}>{c.description}</div>}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          {c.attack_vector && <KV label="Attack Vector" value={c.attack_vector} />}
-                          {c.attack_complexity && <KV label="Complexity" value={c.attack_complexity} />}
-                          {c.epss_percentile && <KV label="EPSS Percentile" value={`${(c.epss_percentile*100).toFixed(1)}th percentile`} />}
-                        </div>
-                        {(c.refs || []).length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            {(c.refs || []).map(r => (
-                              <a key={r} href={r} target="_blank" rel="noreferrer" style={{ display: 'block', fontFamily: T.mono, fontSize: 10, color: T.blue, wordBreak: 'break-all', marginBottom: 3 }}>{r}</a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <Btn sm onClick={() => setExp(e => ({...e, [c.id]: !e[c.id]}))}>{isExp ? '▲' : '▼'}</Btn>
-                    <Btn sm variant="danger" onClick={() => del(c)}>✕</Btn>
-                  </div>
-                </div>
-                <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, marginTop: 8 }}>
-                  Added {ago(c.date_added)} · Priority {c.priority_score ?? '—'}/100
-                </div>
-              </Card>
-            );
-          })}
-          {!(list||[]).length && !loading && <Empty icon="◉" message="No CVEs yet. Click 'Poll All Feeds' or add one manually." />}
-        </div>
-      )}
+      {loading ? <LoadingPage message="Loading CVE feed…" /> : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {(list || []).map(c => {
+          const isExp = expanded[c.id];
+          return <Card key={c.id} glow={c.severity === 'CRITICAL' ? T.redGlow : undefined}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 7 }}><Badge sev={c.severity} /><Tag color={T.red}>{c.cve_ids}</Tag>{c.is_kev && <Tag color={T.red}>KEV</Tag>}{c.cvss_score && <Tag>CVSS {c.cvss_score}</Tag>}{c.epss_score && <Tag color={T.yellow}>EPSS {(c.epss_score * 100).toFixed(1)}%</Tag>}<Tag>{c.source}</Tag></div>
+                <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, marginBottom: 6 }}>{c.title}</div>
+                <div style={{ marginBottom: 8 }}><PriorityBar score={c.priority_score} /></div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{(c.affected_products || []).slice(0, 6).map(p => <Tag key={p}>{p}</Tag>)}</div>
+                {isExp && <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>{c.description && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle, lineHeight: 1.65, marginBottom: 10 }}>{c.description}</div>}<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{c.attack_vector && <KV label="Attack Vector" value={c.attack_vector} />}{c.attack_complexity && <KV label="Complexity" value={c.attack_complexity} />}{c.epss_percentile && <KV label="EPSS Percentile" value={`${(c.epss_percentile * 100).toFixed(1)}th percentile`} />}</div>{(c.refs || []).slice(0, 10).map(r => <a key={r} href={r} target="_blank" rel="noreferrer" style={{ display: 'block', fontFamily: T.mono, fontSize: 10, color: T.blue, wordBreak: 'break-all', marginBottom: 3 }}>{r}</a>)}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}><Btn sm onClick={() => setExpanded(e => ({ ...e, [c.id]: !e[c.id] }))}>{isExp ? '▲' : 'Details'}</Btn>{isAdmin && <Btn sm variant="danger" onClick={() => del(c)}>Delete</Btn>}</div>
+            </div>
+          </Card>;
+        })}
+        {!(list || []).length && <Empty icon="◎" message="No CVEs found." />}
+      </div>}
 
-      {/* Pagination controls */}
-      {total !== null && total > PAGE_SIZE && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 20, padding: '12px 0' }}>
-          <Btn sm variant="ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>← Prev</Btn>
-          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>
-            Page {page + 1} of {Math.ceil(total / PAGE_SIZE)} &nbsp;·&nbsp; {total} total
-          </span>
-          <Btn sm variant="ghost" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total}>Next →</Btn>
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}><Btn sm disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Previous</Btn><Tag>Page {page + 1}</Tag><Btn sm disabled={(list || []).length < 50} onClick={() => setPage(p => p + 1)}>Next</Btn></div>
     </div>
   );
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ALERTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function Alerts({ toast, onCountChange }) {
-  const [status, setStatus] = useState('pending');
-  const { data: list, reload, loading } = useAsync(() =>
-    alertsAPI.list({ status: status === 'all' ? undefined : status }), [status]);
-  const { data: allAlerts } = useAsync(() => alertsAPI.list({}), []);
-  const [acting, setActing] = useState({});
-  const [detail, setDetail] = useState(null);
-  const [noteModal, setNoteModal] = useState(null);
-  const [note, setNote] = useState('');
+function AlertRow({ alert, toast, reload }) {
+  const [working, setWorking] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const verify = async () => { setWorking(true); try { const r = await alertsAPI.verify(alert.id); toast(`AI verdict: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const approve = async () => { setWorking(true); try { await alertsAPI.approve(alert.id); toast('Alert approved — report queued'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const reject = async () => { setWorking(true); try { await alertsAPI.reject(alert.id); toast('Alert rejected'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const restore = async () => { setWorking(true); try { await alertsAPI.restore(alert.id); toast('Alert restored'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
 
-  useEffect(() => {
-    if (onCountChange && allAlerts) {
-      onCountChange('alerts', allAlerts.filter(a => a.status === 'pending').length);
-    }
-  }, [allAlerts]);
-
-  const counts = {
-    pending:  (allAlerts||[]).filter(a => a.status === 'pending').length,
-    approved: (allAlerts||[]).filter(a => a.status === 'approved').length,
-    rejected: (allAlerts||[]).filter(a => a.status === 'rejected').length,
-  };
-
-  const act = async (id, action, noteText = '') => {
-    setActing(a => ({...a, [id]: action}));
-    try {
-      const r = action === 'approve'
-        ? await alertsAPI.approve(id, noteText)
-        : await alertsAPI.reject(id, noteText);
-      if (action === 'approve') {
-        toast(r.report_task_id
-          ? `Approved — report generation queued (${r.report_task_id.slice(0,8)}…)`
-          : 'Approved');
-      } else {
-        toast('Alert rejected');
-      }
-      reload();
-    } catch (e) { toast(e.message, 'error'); }
-    finally { setActing(a => ({...a, [id]: null})); }
-  };
-
-  const openNoteApprove = (id) => { setNoteModal(id); setNote(''); };
-  const confirmApprove = () => { act(noteModal, 'approve', note); setNoteModal(null); };
-
-  return (
-    <div className="slide-in" style={{ padding: 32 }}>
-      <SectionHead title="Alert Queue"
-        sub="CVE-to-client matches identified by the two-layer matching engine (CPE exact + semantic similarity). Approve to trigger AI report generation." />
-
-      {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
-        {[['Pending Review', counts.pending, T.orange], ['Approved', counts.approved, T.green], ['Rejected', counts.rejected, T.muted]].map(([l,v,c]) => (
-          <div key={l} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted }}>{l}</div>
-            <div style={{ fontFamily: T.head, fontSize: 28, fontWeight: 800, color: c }}>{v}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginBottom: 20 }}>
-        <FilterTabs
-          options={[
-            { key: 'pending',  label: 'Pending',  count: counts.pending },
-            { key: 'approved', label: 'Approved', count: counts.approved },
-            { key: 'rejected', label: 'Rejected', count: counts.rejected },
-            { key: 'all',      label: 'All' },
-          ]}
-          active={status} onChange={setStatus}
-        />
-      </div>
-
-      {/* Detail modal */}
-      {detail && (
-        <Modal title="Alert Detail" onClose={() => setDetail(null)} width={600}>
-          <KV label="CVE ID(s)" value={detail.cve?.cve_ids} mono />
-          <KV label="Title"     value={detail.cve?.title} />
-          <KV label="Severity"  value={<Badge sev={detail.cve?.severity} />} />
-          <KV label="CVSS"      value={detail.cve?.cvss_score} mono />
-          <KV label="EPSS"      value={detail.cve?.epss_score ? `${(detail.cve.epss_score*100).toFixed(1)}%` : '—'} />
-          <KV label="KEV"       value={detail.cve?.is_kev ? '🔴 Yes — actively exploited' : 'No'} />
-          <KV label="Priority"  value={<PriorityBar score={detail.cve?.priority_score} />} wide />
-          <KV label="Client"    value={detail.client?.name} />
-          <KV label="Email"     value={detail.client?.email} mono />
-          <KV label="Matched"   value={(detail.matched_assets || []).join(', ')} />
-          <KV label="Method"    value={`${detail.match_method} (${Math.round((detail.match_score||0)*100)}% confidence)`} />
-          {detail.matched_cpes?.length > 0 && <KV label="CPEs" value={detail.matched_cpes.join('\n')} mono />}
-          {detail.cve?.description && (
-            <div style={{ background: T.surface, borderRadius: 8, padding: 14, marginTop: 8 }}>
-              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginBottom: 6 }}>DESCRIPTION</div>
-              <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle, lineHeight: 1.65 }}>{detail.cve.description}</div>
-            </div>
-          )}
-          {detail.status === 'pending' && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
-              <Btn variant="success" loading={acting[detail.id]==='approve'} onClick={() => { openNoteApprove(detail.id); setDetail(null); }}>✓ Approve & Generate Report</Btn>
-              <Btn variant="danger"  loading={acting[detail.id]==='reject'}  onClick={() => { act(detail.id,'reject'); setDetail(null); }}>✕ Reject</Btn>
-            </div>
-          )}
-        </Modal>
-      )}
-
-      {/* Note modal for approval */}
-      {noteModal && (
-        <Modal title="Add Analyst Note (optional)" onClose={() => setNoteModal(null)} width={440}>
-          <Textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add any notes for the record…" rows={3} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <Btn variant="success" onClick={confirmApprove}>✓ Approve & Generate Report</Btn>
-            <Btn variant="ghost" onClick={() => setNoteModal(null)}>Cancel</Btn>
-          </div>
-        </Modal>
-      )}
-
-      {loading ? <LoadingPage message="Loading alerts…" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {(list||[]).map(a => (
-            <Card key={a.id} glow={a.status==='pending' ? 'rgba(234,88,12,.07)' : undefined}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-                    <StatusDot status={a.status} pulse={a.status==='pending'} />
-                    <span style={{ fontFamily: T.mono, fontSize: 10, color: { pending: T.orange, approved: T.green, rejected: T.muted }[a.status], textTransform: 'uppercase', fontWeight: 600 }}>{a.status}</span>
-                    <Badge sev={a.cve?.severity} />
-                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.red, background: T.redDim, padding: '1px 6px', borderRadius: 4 }}>{a.cve?.cve_ids}</span>
-                    {a.cve?.is_kev && <span style={{ fontFamily: T.mono, fontSize: 9, color: T.red, fontWeight: 700 }}>🔴 KEV</span>}
-                  </div>
-                  <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, marginBottom: 6 }}>{a.cve?.title?.slice(0, 100)}</div>
-                  <div style={{ marginBottom: 6 }}><PriorityBar score={a.cve?.priority_score} /></div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: '3px 10px', fontFamily: T.head, fontSize: 12, color: T.text }}>👤 {a.client?.name}</span>
-                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>
-                      {a.match_method} match · {Math.round((a.match_score||0)*100)}% confidence
-                    </span>
-                    {(a.matched_assets||[]).length > 0 && (
-                      <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal }}>
-                        → {(a.matched_assets||[]).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, marginTop: 6 }}>{ago(a.created_at)}</div>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <Btn sm onClick={() => setDetail(a)}>Details</Btn>
-                  {a.status === 'pending' && (
-                    <>
-                      <Btn sm variant="danger" loading={acting[a.id]==='reject'} disabled={!!acting[a.id]} onClick={() => act(a.id,'reject')}>✕</Btn>
-                      <Btn sm variant="success" loading={acting[a.id]==='approve'} disabled={!!acting[a.id]} onClick={() => openNoteApprove(a.id)}>
-                        {acting[a.id]==='approve' ? 'Generating…' : '✓ Approve'}
-                      </Btn>
-                    </>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
-          {!(list||[]).length && <Empty icon="◎" message={`No ${status==='all'?'':status} alerts. CVEs auto-match against client assets.`} />}
-        </div>
-      )}
-    </div>
-  );
+  return <Card><div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}><StatusDot status={alert.status} pulse={alert.status === 'pending'} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}><Badge sev={alert.cve?.severity} /><Tag color={T.red}>{alert.cve?.cve_ids}</Tag>{alert.cve?.is_kev && <Tag color={T.red}>KEV</Tag>}<Tag>{alert.status}</Tag></div><div style={{ fontFamily: T.head, fontWeight: 700, color: T.text, fontSize: 14 }}>{alert.cve?.title || 'Untitled CVE'}</div><div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 5 }}>Client: {alert.client?.name || 'Unknown'} · Created {ago(alert.created_at)}</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>{(alert.matched_assets || []).map(a => <Tag key={a}>{a}</Tag>)}{!(alert.matched_assets || []).length && <Tag>No matched assets</Tag>}</div><MatchInfo alert={alert} />{expanded && <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>{alert.match_reason && <KV label="Match Reason" value={alert.match_reason} wide />}{alert.ai_reason && <KV label="AI Reason" value={alert.ai_reason} wide />}{alert.ai_recommended_action && <KV label="AI Action" value={alert.ai_recommended_action} wide />}{alert.notes && <KV label="Notes" value={alert.notes} wide />}{alert.cve?.description && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle, lineHeight: 1.6 }}>{alert.cve.description}</div>}</div>}</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 300 }}><Btn sm onClick={() => setExpanded(v => !v)}>{expanded ? 'Hide' : 'Details'}</Btn>{alert.status === 'pending' && (alert.match_score || 0) >= 0.8 && <Btn sm variant="blue" onClick={verify} loading={working}>AI Verify</Btn>}{alert.status === 'pending' && <><Btn sm variant="success" onClick={approve} loading={working}>Approve</Btn><Btn sm variant="danger" onClick={reject} loading={working}>Reject</Btn></>}{alert.status === 'rejected' && <Btn sm variant="orange" onClick={restore} loading={working}>Restore</Btn>}</div></div></Card>;
 }
 
+export function Alerts({ toast, onCountChange }) {
+  const [mode, setMode] = useState('grouped');
+  const [status, setStatus] = useState('pending');
+  const [severity, setSeverity] = useState('');
+  const [search, setSearch] = useState('');
+  const [minScore, setMinScore] = useState('');
+  const [kevOnly, setKevOnly] = useState(false);
+  const params = { status: status || undefined, severity: severity || undefined, search: search || undefined, min_score: minScore ? Number(minScore) / 100 : undefined, kev_only: kevOnly || undefined };
+  const { data: list, reload, loading } = useAsync(() => mode === 'grouped' ? alertsAPI.grouped(params) : alertsAPI.list({ ...params, limit: 300 }), [mode, status, severity, search, minScore, kevOnly]);
+  useEffect(() => { alertsAPI.stats().then(s => onCountChange?.('alerts', s.pending || 0)).catch(() => {}); }, [list]);
+  const bulkApprove = async group => { const ids = (group.alerts || []).filter(a => a.status === 'pending').map(a => a.id); if (!ids.length) return toast('No pending alerts in this group', 'warn'); try { const r = await alertsAPI.bulkApprove({ alert_ids: ids, notes: 'Bulk approved from grouped CVE view.' }); toast(`${r.approved} alerts approved — reports queued`); reload(); } catch (e) { toast(e.message, 'error'); } };
+
+  return <div className="slide-in" style={{ padding: 32 }}><SectionHead title="Alert Queue" sub="Search, verify, approve, reject, and group alerts by CVE." action={<><Btn sm variant={mode === 'grouped' ? 'primary' : 'ghost'} onClick={() => setMode('grouped')}>Grouped</Btn><Btn sm variant={mode === 'list' ? 'primary' : 'ghost'} onClick={() => setMode('list')}>List</Btn></>} /><Card style={{ marginBottom: 18, padding: 14 }}><div style={{ display: 'grid', gridTemplateColumns: '1.2fr 160px 160px 140px 110px', gap: 10, alignItems: 'center' }}><Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search CVE, client, asset, notes…" /><Sel value={status} onChange={e => setStatus(e.target.value)}><option value="">All status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></Sel><Sel value={severity} onChange={e => setSeverity(e.target.value)}>{sevOptions.map(s => <option key={s} value={s}>{s || 'All severity'}</option>)}</Sel><Inp value={minScore} onChange={e => setMinScore(e.target.value)} placeholder="Min score %" /><label style={{ color: T.subtle, fontFamily: T.head, fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={kevOnly} onChange={e => setKevOnly(e.target.checked)} />KEV</label></div></Card>{loading ? <LoadingPage message="Loading alerts…" /> : mode === 'grouped' ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{(list || []).map(group => <Card key={group.cve_id} glow={group.severity === 'CRITICAL' ? T.redGlow : undefined}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div style={{ flex: 1 }}><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}><Badge sev={group.severity} /><Tag color={T.red}>{group.cve_ids}</Tag>{group.is_kev && <Tag color={T.red}>KEV</Tag>}<Tag>{group.counts?.pending || 0} pending</Tag><Tag>{(group.alerts || []).length} customers</Tag></div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{group.title}</div><PriorityBar score={group.priority_score} /></div><Btn sm variant="success" onClick={() => bulkApprove(group)}>Approve Pending</Btn></div><div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>{(group.alerts || []).map(a => <div key={a.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 600 }}>{a.client_name}</div><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>{(a.matched_assets || []).map(asset => <Tag key={asset}>{asset}</Tag>)}</div><MatchInfo alert={a} />{a.ai_reason && <div style={{ fontFamily: T.head, color: T.subtle, fontSize: 12, marginTop: 8 }}>AI: {a.ai_reason}</div>}</div><div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}><Tag>{a.status}</Tag>{a.status === 'pending' && (a.match_score || 0) >= 0.8 && <Btn sm variant="blue" onClick={async () => { try { const r = await alertsAPI.verify(a.id); toast(`AI verdict: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } }}>AI Verify</Btn>}{a.status === 'pending' && <><Btn sm variant="success" onClick={async () => { try { await alertsAPI.approve(a.id); toast('Approved — report queued'); reload(); } catch (e) { toast(e.message, 'error'); } }}>Approve</Btn><Btn sm variant="danger" onClick={async () => { try { await alertsAPI.reject(a.id); toast('Rejected'); reload(); } catch (e) { toast(e.message, 'error'); } }}>Reject</Btn></>}</div></div></div>)}</div></Card>)}{!(list || []).length && <Empty icon="◎" message="No alert groups found." />}</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{(list || []).map(a => <AlertRow key={a.id} alert={a} toast={toast} reload={reload} />)}{!(list || []).length && <Empty icon="◎" message="No alerts found." />}</div>}</div>;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function Reports({ toast }) {
-  const [statusFilter, setStatus] = useState('');
-  const { data: list, reload, loading } = useAsync(() =>
-    reportsAPI.list({ status: statusFilter || undefined }), [statusFilter]);
+  const [status, setStatus] = useState('');
+  const [search, setSearch] = useState('');
   const [preview, setPreview] = useState(null);
-  const [sending, setSending] = useState({});
-  const [regen, setRegen] = useState({});
 
-  const send = async (id) => {
-    setSending(s => ({...s, [id]: true}));
-    try { await reportsAPI.send(id); toast('Report marked as sent'); reload(); }
-    catch (e) { toast(e.message, 'error'); }
-    finally { setSending(s => ({...s, [id]: false})); }
+  const { data: list, reload, loading } = useAsync(
+    () =>
+      reportsAPI.list({
+        status: status || undefined,
+        search: search || undefined,
+      }),
+    [status, search]
+  );
+
+  const send = async id => {
+    try {
+      await reportsAPI.send(id);
+      toast('Report sent');
+      reload();
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   };
 
-  const regenerate = async (id) => {
-    setRegen(s => ({...s, [id]: true}));
+  const regen = async id => {
     try {
       await reportsAPI.regenerate(id);
-      toast('Regeneration queued — check back in ~30s', 'warn');
-      setTimeout(reload, 15000);
-    } catch (e) { toast(e.message, 'error'); }
-    finally { setTimeout(() => setRegen(s => ({...s, [id]: false})), 3000); }
+      toast('Report regeneration queued', 'warn');
+      setTimeout(reload, 5000);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   };
 
-  return (
-    <div className="slide-in" style={{ padding: 32 }}>
-      <SectionHead title="Generated Reports"
-        sub="AI-generated security advisories using Claude + RAG (your sample reports as style anchors). Preview, download PDF, or send." />
-
-      <div style={{ marginBottom: 20 }}>
-        <FilterTabs
-          options={[{ key:'',label:'All' },{ key:'draft',label:'● Draft' },{ key:'sent',label:'✓ Sent' }]}
-          active={statusFilter} onChange={setStatus}
-        />
-      </div>
-
-      {preview && <ReportPreview report={preview} onClose={() => setPreview(null)} />}
-
-      {loading ? <LoadingPage message="Loading reports…" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {(list||[]).map(r => {
-            const d = r.report_data || {};
-            const isDraft = r.status === 'draft';
-            return (
-              <Card key={r.id} glow={isDraft ? 'rgba(37,99,235,.07)' : undefined}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                      <Badge sev={r.cve?.severity} />
-                      <span style={{
-                        fontFamily: T.mono, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase',
-                        color: isDraft ? T.blue : T.green,
-                        background: isDraft ? T.blueDim : T.greenDim,
-                        border: `1px solid ${isDraft ? T.blue : T.green}44`,
-                      }}>{isDraft ? '● Draft' : '✓ Sent'}</span>
-                      <span style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>{r.alert_number}</span>
-                      {(r.rag_examples_used||[]).length > 0 && (
-                        <span style={{ fontFamily: T.mono, fontSize: 9, color: T.teal, background: T.tealDim, padding: '1px 6px', borderRadius: 3, border: `1px solid ${T.teal}44` }}>
-                          RAG: {(r.rag_examples_used||[]).length} examples
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
-                      {d.title || r.cve?.title}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>👤 {r.client?.name}</span>
-                      <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>Generated {ago(r.generated_at)}</span>
-                      {r.sent_at && <span style={{ fontFamily: T.mono, fontSize: 10, color: T.green }}>Sent {ago(r.sent_at)}</span>}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <Btn sm onClick={() => setPreview(r)}>👁 Preview</Btn>
-                    <a href={`/api/reports/${r.id}/pdf`} target="_blank" rel="noreferrer" style={{
-                      textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5,
-                      background: 'transparent', color: T.subtle, border: `1px solid ${T.border}`,
-                      fontFamily: T.head, fontWeight: 500, fontSize: 12, padding: '5px 11px', borderRadius: 6,
-                    }}>↓ PDF</a>
-                    <Btn sm variant="teal" loading={regen[r.id]} onClick={() => regenerate(r.id)}>⟳ Regen</Btn>
-                    {isDraft && <Btn sm variant="blue" loading={sending[r.id]} onClick={() => send(r.id)}>📤 Send</Btn>}
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-          {!(list||[]).length && <Empty icon="▣" message="No reports yet. Approve alerts to trigger AI generation." />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// Report preview modal — renders the advisory data as formatted HTML matching the PDF
-function ReportPreview({ report, onClose }) {
-  const d = report.report_data || {};
-  const client = report.client || {};
-  const today = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
-  const sevColor = { CRITICAL:'#8B1A1A', HIGH:'#c2410c', MEDIUM:'#b45309', LOW:'#15803d' }[(d.severity||'HIGH').toUpperCase()] || '#8B1A1A';
-  const descParas = (d.description || '').split(/\n{2,}/).filter(Boolean);
-
-  return (
-    <div className="fade-in" onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.87)', zIndex:600, display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', padding:'32px 16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'#fff', width:'100%', maxWidth:800, borderRadius:6, overflow:'hidden', boxShadow:'0 25px 80px rgba(0,0,0,.8)' }}>
-        <button onClick={onClose} style={{ position:'absolute', top:18, right:18, background:'rgba(255,255,255,.2)', border:'none', color:'#fff', cursor:'pointer', borderRadius:4, padding:'4px 12px', fontFamily:'sans-serif', fontSize:13, zIndex:1 }}>✕ Close</button>
-
-        {/* Header */}
-        <div style={{ background:sevColor, padding:'28px 36px 22px' }}>
-          <div style={{ fontFamily:'monospace', fontSize:10, color:'rgba(255,255,255,.5)', letterSpacing:'.1em', textTransform:'uppercase', marginBottom:10 }}>{today}</div>
-          <h1 style={{ fontFamily:'Georgia, serif', fontWeight:700, fontSize:20, color:'#fff', lineHeight:1.35, margin:0 }}>{d.title}</h1>
-          <div style={{ width:50, height:3, background:'rgba(255,255,255,.3)', marginTop:14 }} />
-        </div>
-
-        {/* Meta */}
-        <div style={{ background:'#f8f0f0', padding:'12px 36px', borderBottom:'1px solid #e0c0c0', display:'grid', gridTemplateColumns:'130px 1fr 130px 1fr', gap:'5px 0' }}>
-          {[['Alert Number', report.alert_number],['Type', d.type||'N/A'],['Severity', `${d.severity} (CVSS ${d.cvss_score||'N/A'})`],['Platforms', d.target_platforms||'—']].map(([k,v]) => (
-            <>
-              <span key={k} style={{ fontFamily:'Arial', fontWeight:700, fontSize:10, color:'#666', paddingTop:2 }}>{k}:</span>
-              <span key={k+'v'} style={{ fontFamily:'Georgia, serif', fontSize:11, color:'#1a1a1a' }}>{v||'—'}</span>
-            </>
-          ))}
-        </div>
-
-        <div style={{ padding:'22px 36px 36px' }}>
-          {/* EPSS + KEV badges */}
-          {(d.epss_note || report.cve?.is_kev) && (
-            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
-              {d.epss_note && <span style={{ background:'#fef3c7', border:'1px solid #f59e0b', color:'#92400e', fontFamily:'Arial', fontSize:10, fontWeight:600, padding:'2px 10px', borderRadius:3 }}>⚡ {d.epss_note}</span>}
-              {report.cve?.is_kev && <span style={{ background:'#fee2e2', border:'1px solid #dc2626', color:'#7f1d1d', fontFamily:'Arial', fontSize:10, fontWeight:700, padding:'2px 10px', borderRadius:3 }}>🔴 CISA KEV — Actively Exploited</span>}
-            </div>
-          )}
-
-          {/* Overview table */}
-          <div style={{ fontFamily:'Arial', fontWeight:700, fontSize:10, color:'#333', textTransform:'uppercase', letterSpacing:'.1em', borderBottom:`2px solid ${sevColor}`, paddingBottom:5, marginBottom:10 }}>Overview</div>
-          <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:20, fontSize:11 }}>
-            <thead><tr style={{ background:'#2d2d2d' }}>
-              {['Product','Severity','CVE ID'].map(h => <th key={h} style={{ color:'#fff', fontFamily:'Arial', fontWeight:700, padding:'7px 12px', textAlign:'left', fontSize:10 }}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {(d.overview_table||[]).map((row,i) => (
-                <tr key={i} style={{ background: i%2===0?'#fef2f2':'#fff', borderBottom:'1px solid #e8c0c0' }}>
-                  <td style={{ fontFamily:'Arial', fontWeight:600, padding:'7px 12px', color:'#1a1a1a', fontSize:11 }}>{row.product}</td>
-                  <td style={{ fontFamily:'Arial', fontWeight:700, padding:'7px 12px', color:sevColor, fontSize:11 }}>{row.severity}</td>
-                  <td style={{ fontFamily:'monospace', fontSize:10, padding:'7px 12px', color:'#555' }}>{row.cve_id}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Description */}
-          <div style={{ fontFamily:'Arial', fontWeight:700, fontSize:10, color:'#333', textTransform:'uppercase', letterSpacing:'.1em', borderBottom:`2px solid ${sevColor}`, paddingBottom:5, marginBottom:10 }}>Description</div>
-          <div style={{ background:'#fff', border:'1px solid #e0c0c0', padding:'12px 14px', marginBottom:20 }}>
-            {descParas.length > 0
-              ? descParas.map((p,i) => <p key={i} style={{ fontFamily:'Georgia, serif', fontSize:11.5, lineHeight:1.7, color:'#1a1a1a', marginBottom: i < descParas.length-1 ? 10 : 0 }}>{p}</p>)
-              : <p style={{ fontFamily:'Georgia, serif', fontSize:11.5, color:'#1a1a1a', lineHeight:1.7 }}>{d.description}</p>
-            }
-          </div>
-
-          {/* Details table */}
-          <div style={{ fontFamily:'Arial', fontWeight:700, fontSize:10, color:'#333', textTransform:'uppercase', letterSpacing:'.1em', borderBottom:`2px solid ${sevColor}`, paddingBottom:5, marginBottom:10 }}>Vulnerability Details</div>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, marginBottom:20 }}>
-            <tbody>
-              {[
-                ['Affected Products', (d.affected_products||[]).map(p => `• ${p}`).join('\n')],
-                ['Affected Versions', d.affected_versions],
-                ['Severity', d.severity_detail],
-                ['Impact', (d.impact||[]).map(i => `• ${i}`).join('\n')],
-                ['Attack Vector', d.attack_vector],
-                ['Remediations', d.remediation],
-                d.client_note ? [`Note for ${client.name}`, d.client_note] : null,
-                ['References', (d.references||[]).join('\n')],
-                ['Disclaimer', '• Information provided on an "as is" basis, without warranty.\n• Products past End of General Support are not evaluated.'],
-              ].filter(Boolean).map(([label,val],i) => (
-                <tr key={label} style={{ verticalAlign:'top' }}>
-                  <td style={{ background:sevColor, color:'#fff', fontFamily:'Arial', fontWeight:700, fontSize:9.5, padding:'9px 12px', width:145, borderBottom:'1px solid rgba(255,255,255,.12)', whiteSpace:'nowrap' }}>{label}</td>
-                  <td style={{ background: i%2===0?'#fff':'#fef9f9', fontFamily:'Georgia, serif', fontSize:11, padding:'9px 14px', lineHeight:1.65, borderBottom:'1px solid #e0c0c0', whiteSpace:'pre-line', color:'#1a1a1a',
-                    ...(label.startsWith('Note') ? { background:'#eff6ff', color:'#1e40af', fontStyle:'italic' } : {}) }}>
-                    {val||'—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* RAG metadata */}
-          {(report.rag_examples_used||[]).length > 0 && (
-            <div style={{ fontFamily:'monospace', fontSize:9, color:'#999', borderTop:'1px solid #eee', paddingTop:10 }}>
-              Generated with RAG examples: {(report.rag_examples_used||[]).join(', ')}
-            </div>
-          )}
-          <div style={{ fontFamily:'monospace', fontSize:9, color:'#bbb', textAlign:'center', marginTop:8 }}>
-            {report.alert_number} · {client.name} · {today} · CONFIDENTIAL
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SAMPLE REPORTS (RAG management)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export function SampleReports({ toast }) {
-  const { data: list, reload, loading } = useAsync(() => samplesAPI.list(), []);
-  const [uploading, setUploading] = useState(false);
-  const [meta, setMeta] = useState({ severity: 'CRITICAL', vuln_type: '' });
-  const fileRef = useState(null);
-  const { confirm, Dialog } = useConfirm();
-
-  const upload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
+  const download = async id => {
     try {
-      const r = await samplesAPI.upload(file, meta);
-      toast(`Indexed "${r.filename}" — ${r.chars_indexed} chars in ${Math.ceil(r.chars_indexed/1500)} chunks`);
-      reload();
-    } catch (err) { toast(err.message, 'error'); }
-    finally { setUploading(false); e.target.value = ''; }
+      await reportsAPI.downloadFile(id);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
   };
-
-  const del = (doc) => confirm(`Remove "${doc.filename}" from RAG store?`, async () => {
-    try { await samplesAPI.delete(doc.doc_id); toast('Removed'); reload(); }
-    catch (e) { toast(e.message, 'error'); }
-  });
 
   return (
     <div className="slide-in" style={{ padding: 32 }}>
-      <SectionHead title="Sample Reports — RAG Store"
-        sub="Upload your handmade advisory reports (PDF or TXT). These are embedded into ChromaDB and used as style anchors when Claude generates new reports. The more examples, the better the style match." />
+      <SectionHead
+        title="Reports"
+        sub="Generated CTI advisory documents."
+      />
 
-      <Card style={{ marginBottom: 22, borderColor: `${T.teal}44`, boxShadow: `0 0 20px rgba(13,148,136,.1)` }}>
-        <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 16 }}>Upload Sample Report</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 12, alignItems: 'flex-end' }}>
-          <div>
-            <Lbl>Severity</Lbl>
-            <Sel value={meta.severity} onChange={e => setMeta(m => ({...m, severity: e.target.value}))}>
-              {['CRITICAL','HIGH','MEDIUM','LOW'].map(s => <option key={s}>{s}</option>)}
-            </Sel>
+      {preview && (
+        <Modal
+          title="Report Preview"
+          onClose={() => setPreview(null)}
+          width={780}
+        >
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            <span
+              style={{
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 5,
+                padding: '2px 8px',
+                fontFamily: T.mono,
+                fontSize: 10,
+                color: T.subtle,
+              }}
+            >
+              {preview.alert_number}
+            </span>
+
+            <span
+              style={{
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 5,
+                padding: '2px 8px',
+                fontFamily: T.mono,
+                fontSize: 10,
+                color: T.subtle,
+                textTransform: 'uppercase',
+              }}
+            >
+              {preview.status}
+            </span>
+
+            <span
+              style={{
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 5,
+                padding: '2px 8px',
+                fontFamily: T.mono,
+                fontSize: 10,
+                color: T.subtle,
+              }}
+            >
+              {preview.client?.name || 'Unknown client'}
+            </span>
+
+            {preview.cve?.severity && <Badge sev={preview.cve.severity} />}
           </div>
-          <div>
-            <Lbl>Vulnerability Type</Lbl>
-            <Inp value={meta.vuln_type} onChange={e => setMeta(m => ({...m, vuln_type: e.target.value}))} placeholder="e.g. Authentication Bypass, RCE, SQL Injection" />
+
+          <div
+            style={{
+              fontFamily: T.head,
+              fontSize: 18,
+              fontWeight: 700,
+              color: T.text,
+              marginBottom: 14,
+              lineHeight: 1.35,
+            }}
+          >
+            {preview.report_data?.title || preview.cve?.title || 'Security Advisory'}
           </div>
-          <div>
-            <Lbl>File (PDF or TXT)</Lbl>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: T.tealDim, color: T.teal, border: `1px solid ${T.teal}44`, borderRadius: 6, padding: '7px 14px', fontFamily: T.head, fontWeight: 500, fontSize: 13, cursor: 'pointer', opacity: uploading ? .5 : 1 }}>
-              {uploading ? <><Spinner size={14} /> Indexing…</> : '📁 Choose File'}
-              <input type="file" accept=".pdf,.txt,.md" onChange={upload} style={{ display: 'none' }} disabled={uploading} />
-            </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <KV label="CVE" value={preview.cve?.cve_ids || '—'} wide />
+            <KV label="Client" value={preview.client?.name || '—'} wide />
+            <KV label="Generated" value={fmt(preview.generated_at)} wide />
+            <KV label="Sent" value={preview.sent_at ? fmt(preview.sent_at) : 'Not sent'} wide />
           </div>
-        </div>
-        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 10 }}>
-          Reports are chunked by section, embedded with all-MiniLM-L6-v2, and stored in ChromaDB. At report generation time, the 3 most similar chunks are injected into the Claude prompt as style examples.
+
+          <div style={{ marginTop: 16 }}>
+            <Lbl>Description</Lbl>
+            <div
+              style={{
+                fontFamily: T.head,
+                color: T.subtle,
+                fontSize: 13,
+                lineHeight: 1.7,
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                padding: 12,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {preview.report_data?.description ||
+                preview.cve?.description ||
+                'No description available.'}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <Lbl>Impact</Lbl>
+            <div
+              style={{
+                fontFamily: T.head,
+                color: T.subtle,
+                fontSize: 13,
+                lineHeight: 1.7,
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                padding: 12,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {Array.isArray(preview.report_data?.impact)
+                ? preview.report_data.impact.map((i, idx) => (
+                    <div key={idx}>• {i}</div>
+                  ))
+                : preview.report_data?.impact ||
+                  preview.cve?.impact ||
+                  'No impact details available.'}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <Lbl>Remediation</Lbl>
+            <div
+              style={{
+                fontFamily: T.head,
+                color: T.subtle,
+                fontSize: 13,
+                lineHeight: 1.7,
+                background: T.surface,
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                padding: 12,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {preview.report_data?.remediation ||
+                preview.cve?.remediation ||
+                'No remediation available.'}
+            </div>
+          </div>
+
+          {(preview.report_data?.references || preview.cve?.refs || []).length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <Lbl>References</Lbl>
+              <div
+                style={{
+                  background: T.surface,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 8,
+                  padding: 12,
+                }}
+              >
+                {(preview.report_data?.references || preview.cve?.refs || []).map((ref, idx) => (
+                  <a
+                    key={idx}
+                    href={ref}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'block',
+                      fontFamily: T.mono,
+                      fontSize: 10,
+                      color: T.blue,
+                      wordBreak: 'break-all',
+                      marginBottom: 5,
+                    }}
+                  >
+                    {ref}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 22 }}>
+            <Btn
+              variant="blue"
+              onClick={() => download(preview.id)}
+            >
+              Download DOCX
+            </Btn>
+
+            <Btn
+              variant="ghost"
+              onClick={() => regen(preview.id)}
+            >
+              Regenerate
+            </Btn>
+
+            {preview.status !== 'sent' && (
+              <Btn
+                variant="success"
+                onClick={() => send(preview.id)}
+              >
+                Send
+              </Btn>
+            )}
+
+            <Btn
+              variant="ghost"
+              onClick={() => setPreview(null)}
+            >
+              Close
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      <Card style={{ marginBottom: 18, padding: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 10 }}>
+          <Inp
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search report, CVE, title, or client…"
+          />
+
+          <Sel
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+          >
+            <option value="">All status</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+          </Sel>
         </div>
       </Card>
 
-      {Dialog}
+      {loading ? (
+        <LoadingPage message="Loading reports…" />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {(list || []).map(r => (
+            <Card key={r.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span
+                      style={{
+                        background: T.surface,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 5,
+                        padding: '2px 8px',
+                        fontFamily: T.mono,
+                        fontSize: 10,
+                        color: T.subtle,
+                      }}
+                    >
+                      {r.alert_number}
+                    </span>
 
-      <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, marginBottom: 14 }}>
-        Indexed Reports ({(list||[]).length})
-      </div>
+                    <span
+                      style={{
+                        background: T.surface,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 5,
+                        padding: '2px 8px',
+                        fontFamily: T.mono,
+                        fontSize: 10,
+                        color: T.subtle,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {r.status}
+                    </span>
 
-      {loading ? <LoadingPage message="Loading sample reports…" /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {(list||[]).map((doc, i) => (
-            <Card key={doc.doc_id || i}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontFamily: T.head, fontWeight: 600, fontSize: 14, color: T.text, marginBottom: 4 }}>
-                    📄 {doc.filename}
+                    <span
+                      style={{
+                        background: T.surface,
+                        border: `1px solid ${T.border}`,
+                        borderRadius: 5,
+                        padding: '2px 8px',
+                        fontFamily: T.mono,
+                        fontSize: 10,
+                        color: T.subtle,
+                      }}
+                    >
+                      {r.client?.name || 'Unknown client'}
+                    </span>
+
+                    {r.cve?.severity && <Badge sev={r.cve.severity} />}
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    {doc.severity && <Badge sev={doc.severity} />}
-                    {doc.vuln_type && <span style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{doc.vuln_type}</span>}
-                    <span style={{ fontFamily: T.mono, fontSize: 10, color: T.teal, background: T.tealDim, padding: '1px 7px', borderRadius: 3 }}>Indexed in ChromaDB</span>
+
+                  <div
+                    style={{
+                      fontFamily: T.head,
+                      color: T.text,
+                      fontWeight: 700,
+                      fontSize: 14,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {r.report_data?.title || r.cve?.title || 'Security Advisory'}
+                  </div>
+
+                  <div
+                    style={{
+                      fontFamily: T.mono,
+                      fontSize: 10,
+                      color: T.muted,
+                      marginTop: 5,
+                    }}
+                  >
+                    {r.cve?.cve_ids || 'No CVE'} · Generated {fmt(r.generated_at)}
+                    {r.sent_at ? ` · Sent ${fmt(r.sent_at)}` : ''}
                   </div>
                 </div>
-                <Btn sm variant="danger" onClick={() => del(doc)}>✕ Remove</Btn>
+
+                <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <Btn
+                    sm
+                    onClick={() => setPreview(r)}
+                  >
+                    Preview
+                  </Btn>
+
+                  <Btn
+                    sm
+                    variant="blue"
+                    onClick={() => download(r.id)}
+                  >
+                    Download DOCX
+                  </Btn>
+
+                  <Btn
+                    sm
+                    onClick={() => regen(r.id)}
+                  >
+                    Regenerate
+                  </Btn>
+
+                  {r.status !== 'sent' && (
+                    <Btn
+                      sm
+                      variant="success"
+                      onClick={() => send(r.id)}
+                    >
+                      Send
+                    </Btn>
+                  )}
+                </div>
               </div>
             </Card>
           ))}
-          {!(list||[]).length && (
-            <Empty icon="📄"
-              message="No sample reports yet. Upload your handmade advisory reports to enable style-accurate AI generation. Aim for 10–20+ reports for best results." />
+
+          {!(list || []).length && (
+            <Empty icon="▣" message="No reports found." />
           )}
         </div>
       )}
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SAMPLE REPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function SampleReports({ toast, isAdmin }) {
+  const { data: list, reload, loading } = useAsync(() => samplesAPI.list(), []);
+  const [file, setFile] = useState(null);
+  const [severity, setSeverity] = useState('HIGH');
+  const [vulnType, setVulnType] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const { confirm, Dialog } = useConfirm();
+  const upload = async () => { if (!file) return toast('Select a file first', 'error'); setUploading(true); try { await samplesAPI.upload(file, { severity, vuln_type: vulnType }); toast('Sample report uploaded'); setFile(null); setVulnType(''); reload(); } catch (e) { toast(e.message, 'error'); } finally { setUploading(false); } };
+  const del = item => confirm(`Delete sample report "${item.filename}"?`, async () => { try { await samplesAPI.delete(item.doc_id); toast('Sample report deleted'); reload(); } catch (e) { toast(e.message, 'error'); } });
+  return <div className="slide-in" style={{ padding: 32 }}><SectionHead title="Sample Reports" sub="Upload report examples used for advisory style reference." />{isAdmin && <Card style={{ marginBottom: 18 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 220px auto', gap: 10, alignItems: 'end' }}><div><Lbl>PDF/TXT/Markdown File</Lbl><input type="file" onChange={e => setFile(e.target.files?.[0] || null)} style={{ color: T.subtle, fontFamily: T.head }} /></div><div><Lbl>Severity</Lbl><Sel value={severity} onChange={e => setSeverity(e.target.value)}>{['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(s => <option key={s}>{s}</option>)}</Sel></div><div><Lbl>Vulnerability Type</Lbl><Inp value={vulnType} onChange={e => setVulnType(e.target.value)} placeholder="RCE, Auth Bypass…" /></div><Btn variant="primary" onClick={upload} loading={uploading}>Upload</Btn></div></Card>}{Dialog}{loading ? <LoadingPage message="Loading sample reports…" /> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{(list || []).map(item => <Card key={item.doc_id}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 700 }}>{item.filename}</div><div style={{ display: 'flex', gap: 6, marginTop: 6 }}>{item.severity && <Badge sev={item.severity} />}{item.vuln_type && <Tag>{item.vuln_type}</Tag>}{item.uploaded_at && <Tag>{fmt(item.uploaded_at)}</Tag>}</div></div>{isAdmin && <Btn sm variant="danger" onClick={() => del(item)}>Delete</Btn>}</div></Card>)}{!(list || []).length && <Empty icon="▤" message="No sample reports uploaded." />}</div>}</div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// USERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function Users({ toast, user }) {
+  const { data: list, reload, loading } = useAsync(() => authAPI.listUsers(), []);
+  const [form, setForm] = useState({ username: '', password: '', role: 'security_reader' });
+  const [saving, setSaving] = useState(false);
+  const [resetUser, setResetUser] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const { confirm, Dialog } = useConfirm();
+  const create = async () => { if (!form.username || !form.password) return toast('Username and password required', 'error'); setSaving(true); try { await authAPI.createUser(form); toast('User created'); setForm({ username: '', password: '', role: 'security_reader' }); reload(); } catch (e) { toast(e.message, 'error'); } finally { setSaving(false); } };
+  const changeRole = async (u, role) => { try { await authAPI.changeRole(u.id, role); toast('Role updated'); reload(); } catch (e) { toast(e.message, 'error'); } };
+  const resetPassword = async () => { if (!newPassword || newPassword.length < 8) return toast('New password must be at least 8 characters', 'error'); try { await authAPI.resetPassword(resetUser.id, { new_password: newPassword }); toast(`Password reset for ${resetUser.username}`); setResetUser(null); setNewPassword(''); } catch (e) { toast(e.message, 'error'); } };
+  const del = u => confirm(`Delete user "${u.username}"?`, async () => { try { await authAPI.deleteUser(u.id); toast('User deleted'); reload(); } catch (e) { toast(e.message, 'error'); } });
+  return <div className="slide-in" style={{ padding: 32 }}><SectionHead title="User Management" sub="Create users, change roles, and reset forgotten passwords." /><Card style={{ marginBottom: 18 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 180px auto', gap: 10, alignItems: 'end' }}><div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="analyst01" /></div><div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="min 8 characters" /></div><div><Lbl>Role</Lbl><Sel value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}><option value="security_reader">security_reader</option><option value="security_admin">security_admin</option></Sel></div><Btn variant="primary" loading={saving} onClick={create}>Create</Btn></div></Card>{Dialog}{resetUser && <Modal title={`Reset password: ${resetUser.username}`} onClose={() => setResetUser(null)} width={420}><Lbl>New Password</Lbl><Inp type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="min 8 characters" /><div style={{ display: 'flex', gap: 8, marginTop: 16 }}><Btn variant="primary" onClick={resetPassword}>Reset Password</Btn><Btn variant="ghost" onClick={() => setResetUser(null)}>Cancel</Btn></div></Modal>}{loading ? <LoadingPage message="Loading users…" /> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{(list || []).map(u => <Card key={u.id}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 700 }}>{u.username}</div><div style={{ display: 'flex', gap: 6, marginTop: 6 }}><Tag>{u.role}</Tag><Tag>{u.is_active ? 'active' : 'disabled'}</Tag><Tag>Created {fmt(u.created_at)}</Tag></div></div><div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}><Sel value={u.role} onChange={e => changeRole(u, e.target.value)} style={{ width: 170 }} disabled={u.id === user?.id}><option value="security_reader">security_reader</option><option value="security_admin">security_admin</option></Sel><Btn sm onClick={() => setResetUser(u)}>Reset Password</Btn><Btn sm variant="danger" disabled={u.id === user?.id} onClick={() => del(u)}>Delete</Btn></div></div></Card>)}</div>}</div>;
 }

@@ -20,6 +20,20 @@ def now() -> datetime:
     return datetime.utcnow()
 
 
+# ─── Users ────────────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 'security_reader' | 'security_admin'
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="security_reader")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
 # ─── Clients ──────────────────────────────────────────────────────────────────
 
 class Client(Base):
@@ -45,17 +59,14 @@ class ClientAsset(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     client_id: Mapped[str] = mapped_column(String(36), ForeignKey("clients.id", ondelete="CASCADE"))
     asset_name: Mapped[str] = mapped_column(String(512), nullable=False)
-    # CPE string if known — e.g. cpe:2.3:a:cisco:firepower_management_center:*
     cpe_string: Mapped[Optional[str]] = mapped_column(Text)
-    # Semantic embedding (384-dim all-MiniLM-L6-v2)
-    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(384))
+    # 768-dim all-mpnet-base-v2 embeddings
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(768))
 
     client: Mapped["Client"] = relationship("Client", back_populates="assets")
 
     __table_args__ = (
         Index("ix_asset_client", "client_id"),
-        # hnsw index for cosine similarity — no minimum row requirement (unlike ivfflat)
-        # Created via migration; defined here so SQLAlchemy is aware of it
         Index(
             "ix_asset_embedding_hnsw",
             "embedding",
@@ -78,19 +89,19 @@ class CVE(Base):
     severity: Mapped[str] = mapped_column(String(20), default="MEDIUM", index=True)
     cvss_score: Mapped[Optional[float]] = mapped_column(Float)
     cvss_vector: Mapped[Optional[str]] = mapped_column(String(255))
-    epss_score: Mapped[Optional[float]] = mapped_column(Float)    # 0–1 exploit probability
+    epss_score: Mapped[Optional[float]] = mapped_column(Float)
     epss_percentile: Mapped[Optional[float]] = mapped_column(Float)
-    priority_score: Mapped[Optional[float]] = mapped_column(Float) # computed composite score
-    is_kev: Mapped[bool] = mapped_column(Boolean, default=False)   # in CISA KEV
-    affected_products: Mapped[Optional[dict]] = mapped_column(JSON)  # list of product strings
-    cpe_strings: Mapped[Optional[dict]] = mapped_column(JSON)        # list of CPE 2.3 strings
+    priority_score: Mapped[Optional[float]] = mapped_column(Float)
+    is_kev: Mapped[bool] = mapped_column(Boolean, default=False)
+    affected_products: Mapped[Optional[dict]] = mapped_column(JSON)
+    cpe_strings: Mapped[Optional[dict]] = mapped_column(JSON)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    impact: Mapped[Optional[dict]] = mapped_column(JSON)             # list of impact strings
+    impact: Mapped[Optional[dict]] = mapped_column(JSON)
     attack_vector: Mapped[Optional[str]] = mapped_column(String(512))
     attack_complexity: Mapped[Optional[str]] = mapped_column(String(50))
     privileges_required: Mapped[Optional[str]] = mapped_column(String(50))
     remediation: Mapped[Optional[str]] = mapped_column(Text)
-    refs: Mapped[Optional[dict]] = mapped_column(JSON)               # list of URLs
+    refs: Mapped[Optional[dict]] = mapped_column(JSON)
     vendor_advisory: Mapped[Optional[str]] = mapped_column(Text)
     patch_available: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str] = mapped_column(String(50), default="manual")
@@ -115,16 +126,36 @@ class Alert(Base):
     cve_id: Mapped[str] = mapped_column(String(36), ForeignKey("cves.id", ondelete="CASCADE"), index=True)
     client_id: Mapped[str] = mapped_column(String(36), ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+
     # Match metadata
-    match_method: Mapped[Optional[str]] = mapped_column(String(50))   # "cpe" | "semantic" | "both"
+    match_method: Mapped[Optional[str]] = mapped_column(String(50))
     match_score: Mapped[Optional[float]] = mapped_column(Float)
-    matched_assets: Mapped[Optional[dict]] = mapped_column(JSON)       # list of matched asset names
-    matched_cpes: Mapped[Optional[dict]] = mapped_column(JSON)         # list of matched CPE strings
+    raw_match_score: Mapped[Optional[float]] = mapped_column(Float)
+    boosted_match_score: Mapped[Optional[float]] = mapped_column(Float)
+    match_decision: Mapped[Optional[str]] = mapped_column(String(50))
+    match_reason: Mapped[Optional[str]] = mapped_column(Text)
+
+    matched_assets: Mapped[Optional[dict]] = mapped_column(JSON)
+    matched_cpes: Mapped[Optional[dict]] = mapped_column(JSON)
+
+    # AI verification metadata
+    ai_verdict: Mapped[Optional[str]] = mapped_column(String(30))
+    ai_confidence: Mapped[Optional[float]] = mapped_column(Float)
+    ai_reason: Mapped[Optional[str]] = mapped_column(Text)
+    ai_recommended_action: Mapped[Optional[str]] = mapped_column(Text)
+    ai_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    ai_verified_by: Mapped[Optional[str]] = mapped_column(String(255))
+    ai_model: Mapped[Optional[str]] = mapped_column(String(100))
+
     # Workflow
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now, index=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(255))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Archive / restore tracking
+    declined_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     cve: Mapped["CVE"] = relationship("CVE", back_populates="alerts", lazy="selectin")
     client: Mapped["Client"] = relationship("Client", back_populates="alerts", lazy="selectin")
@@ -134,8 +165,6 @@ class Alert(Base):
         UniqueConstraint("cve_id", "client_id", name="uq_alert_cve_client"),
         Index("ix_alert_status_created", "status", "created_at"),
     )
-
-
 # ─── Reports ──────────────────────────────────────────────────────────────────
 
 class Report(Base):
@@ -146,10 +175,10 @@ class Report(Base):
     cve_id: Mapped[str] = mapped_column(String(36), ForeignKey("cves.id", ondelete="CASCADE"))
     client_id: Mapped[str] = mapped_column(String(36), ForeignKey("clients.id", ondelete="CASCADE"))
     alert_number: Mapped[str] = mapped_column(String(50))
-    report_data: Mapped[Optional[dict]] = mapped_column(JSON)   # full structured report
+    report_data: Mapped[Optional[dict]] = mapped_column(JSON)
     pdf_path: Mapped[Optional[str]] = mapped_column(Text)
     pdf_filename: Mapped[Optional[str]] = mapped_column(String(255))
-    rag_examples_used: Mapped[Optional[dict]] = mapped_column(JSON)  # which sample reports were used
+    rag_examples_used: Mapped[Optional[dict]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -183,6 +212,6 @@ class SampleReport(Base):
     filename: Mapped[str] = mapped_column(String(255))
     severity: Mapped[Optional[str]] = mapped_column(String(20))
     vuln_type: Mapped[Optional[str]] = mapped_column(String(255))
-    full_text: Mapped[Optional[str]] = mapped_column(Text)       # extracted text
-    chroma_doc_id: Mapped[Optional[str]] = mapped_column(String(255))  # ID in ChromaDB
+    full_text: Mapped[Optional[str]] = mapped_column(Text)
+    chroma_doc_id: Mapped[Optional[str]] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
