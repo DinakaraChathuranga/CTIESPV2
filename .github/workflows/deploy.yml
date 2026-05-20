@@ -1,0 +1,38 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ${{ secrets.SERVER_PATH }}
+
+            echo ">>> Pulling latest code"
+            git pull origin main
+
+            echo ">>> Running database migrations"
+            docker compose exec -T backend alembic upgrade head
+
+            echo ">>> Restarting backend services"
+            docker compose up -d --force-recreate backend worker beat
+
+            echo ">>> Rebuilding frontend"
+            docker compose up -d --build --force-recreate frontend
+
+            echo ">>> Done"
+            docker compose ps
