@@ -1361,7 +1361,6 @@ async def health_check(
 ):
     db_ok = False
     redis_ok = False
-    chroma_ok = False
     model_ok = False
 
     try:
@@ -1377,17 +1376,6 @@ async def health_check(
         logger.warning("Redis health check failed: %s", e)
 
     try:
-        chroma_host = getattr(settings, "CHROMA_HOST", "chromadb")
-        chroma_port = getattr(settings, "CHROMA_PORT", 8000)
-        url = f"http://{chroma_host}:{chroma_port}/api/v1/heartbeat"
-
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(url)
-            chroma_ok = response.status_code < 500
-    except Exception:
-        chroma_ok = False
-
-    try:
         from services.matching.semantic_matcher import get_model
 
         model = get_model()
@@ -1401,7 +1389,6 @@ async def health_check(
         status=status,
         db=db_ok,
         redis=redis_ok,
-        chromadb=chroma_ok,
         embedding_model_loaded=model_ok,
     )
 

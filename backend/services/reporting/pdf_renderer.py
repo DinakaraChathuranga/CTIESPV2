@@ -1,3 +1,7 @@
+# DEPRECATED: This file is no longer used. Report generation now calls
+# docx_generator.py directly from workers/tasks.py.
+# Kept for reference only. Safe to delete in a future cleanup.
+
 # services/reporting/pdf_renderer.py
 import logging, os, re, json, subprocess, sys
 from datetime import datetime

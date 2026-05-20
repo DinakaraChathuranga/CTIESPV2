@@ -63,7 +63,7 @@ export default function Sidebar({ view, setView, counts, health, user, isAdmin, 
       {health && (
         <div style={{ padding: '10px 16px', borderTop: `1px solid ${T.border}`, background: 'rgba(0,0,0,.15)' }}>
           <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, letterSpacing: '.08em', marginBottom: 7, textTransform: 'uppercase' }}>Services</div>
-          {[['DB', health.db], ['Redis', health.redis], ['ChromaDB', health.chromadb], ['AI Model', health.embedding_model_loaded]].map(([k, ok]) => (
+          {[['DB', health.db], ['Redis', health.redis], ['AI Model', health.embedding_model_loaded]].map(([k, ok]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{k}</span>
               <span style={{ fontFamily: T.mono, fontSize: 10, color: ok ? T.green : T.red, fontWeight: 600 }}>{ok ? '●' : '○'}</span>

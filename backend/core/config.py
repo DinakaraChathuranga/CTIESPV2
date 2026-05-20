@@ -1,5 +1,6 @@
 # core/config.py
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 from typing import List
 
@@ -14,6 +15,18 @@ class Settings(BaseSettings):
     # IMPORTANT: Set a strong random secret in production .env
     JWT_SECRET: str = "change-this-to-a-random-secret-in-production"
     JWT_EXPIRE_HOURS: int = 8
+
+    @field_validator("JWT_SECRET")
+    @classmethod
+    def warn_default_secret(cls, v):
+        import logging
+        if v == "change-this-to-a-random-secret-in-production":
+            logging.getLogger(__name__).warning(
+                "SECURITY WARNING: JWT_SECRET is using the default value. "
+                "Set a strong random secret in your .env file before going to production. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return v
 
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://cti:ctipassword@localhost:5432/ctidb"
@@ -58,8 +71,12 @@ class Settings(BaseSettings):
         "https://www.bleepingcomputer.com/feed/",
         "https://www.securityweek.com/feed",
         "https://packetstormsecurity.com/headlines.xml",
-        "https://www.darkreading.com/rss.xml",
-        "https://feeds.feedburner.com/Securityweek",
+        "https://www.exploit-db.com/rss.xml",
+        "https://seclists.org/rss/fulldisclosure.rss",
+        "https://www.cvedetails.com/vulnerability-feed.php?vendor_id=0&product_id=0&version_id=0&hasexp=1&opec=1&opov=1&opcsrf=1&opgpriv=1&opsqli=1&opxss=1&opdirt=1&opmemc=1&ophttprs=1&opbyp=1&opfileinc=1&opginf=1&cvssscoremin=7&cvssscoremax=10&type=json&format=rss",
+        "https://feeds.feedburner.com/securityweek",
+        "https://www.rapid7.com/blog/tag/vulnerability-disclosure/rss/",
+        "https://github.blog/changelog/label/security/feed/",
         "https://tools.cisco.com/security/center/rss.x?cat=High",
         "https://support.microsoft.com/rss/security",
     ]

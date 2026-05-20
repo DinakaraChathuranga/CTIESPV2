@@ -268,6 +268,5 @@ class HealthOut(BaseModel):
     status: str
     db: bool
     redis: bool
-    chromadb: bool
     embedding_model_loaded: bool
     version: str = "2.0.0"

@@ -1,7 +1,7 @@
 # 🛡 CTI Automation Platform v2.0
 
 > Full-stack SOC CTI advisory automation for Managed Security Service Providers.  
-> Python FastAPI · PostgreSQL + pgvector · Celery · ChromaDB · Claude API · React
+> Python FastAPI · PostgreSQL + pgvector · Celery · Claude API · React
 
 ---
 
@@ -9,11 +9,11 @@
 
 | Feature | Details |
 |---|---|
-| **Two-layer matching** | CPE exact match + `all-MiniLM-L6-v2` semantic similarity via pgvector |
+| **Two-layer matching** | CPE exact match + `all-mpnet-base-v2` semantic similarity via pgvector |
 | **RAG report generation** | Upload 20+ sample reports → Claude writes in your exact style |
 | **Priority scoring** | CVSS + EPSS + KEV flag → composite 0–100 priority score per CVE |
 | **EPSS enrichment** | first.org exploit probability pulled for every CVE |
-| **8 RSS feeds** | BleepingComputer, TheHackersNews, Dark Reading, Packet Storm, vendor advisories |
+| **9 RSS feeds** | BleepingComputer, TheHackersNews, SecurityWeek, PacketStorm, Exploit-DB, Rapid7, GitHub Security, Cisco advisories, Microsoft security |
 | **WeasyPrint PDF** | HTML/CSS template → pixel-perfect branded PDF (no wkhtmltopdf) |
 | **Celery workers** | All polling and report generation fully async + scheduled |
 
@@ -52,11 +52,10 @@ Services started:
 | Frontend UI | http://localhost:5173 |
 | Backend API | http://localhost:8000 |
 | API Docs (Swagger) | http://localhost:8000/docs |
-| ChromaDB | http://localhost:8001 |
 
 ### 3. Upload your sample reports
 Go to **Sample Reports** tab → Upload your 20+ handmade advisories (PDF or TXT).
-These are indexed into ChromaDB and used as style anchors by Claude.
+These are indexed into PostgreSQL and used as style anchors by the AI report generator.
 
 ### 4. Add clients and assets
 Go to **Clients & Assets** → Add clients → Add product names to each client's asset registry.
@@ -72,8 +71,8 @@ NVD poll runs every 6 hours. You can trigger manual polls from the Feed tab.
 ## Development Mode (without Docker)
 
 ```bash
-# Terminal 1 — PostgreSQL + Redis + ChromaDB via Docker
-docker compose up postgres redis chromadb -d
+# Terminal 1 — PostgreSQL + Redis via Docker
+docker compose up postgres redis -d
 
 # Terminal 2 — Backend
 cd backend
@@ -104,7 +103,7 @@ npm install && npm run dev
 ```
 CVE Sources          Matching Engine           Report Pipeline
 ─────────────        ───────────────           ───────────────
-NVD API 2.0    ──►  Layer 1: CPE exact  ──►   RAG query (ChromaDB)
+NVD API 2.0    ──►  Layer 1: CPE exact  ──►   RAG query (PostgreSQL (RAG))
 CISA KEV       ──►  Layer 2: Semantic   ──►   + 3 similar examples
 8 RSS feeds    ──►  pgvector cosine     ──►   Claude API (few-shot)
 Manual ingest  ──►  EPSS enrichment     ──►   JSON validation
@@ -124,10 +123,10 @@ Manual ingest  ──►  EPSS enrichment     ──►   JSON validation
 
 ## Key Design Decisions
 
-### Embedding model: all-MiniLM-L6-v2
-- 80MB, runs on CPU, ~5ms per sentence
+### Embedding model: all-mpnet-base-v2
+- 420MB, runs on CPU, ~5ms per sentence
 - Pre-downloaded in Docker image (no cold start)
-- 384-dimensional embeddings stored in pgvector
+- 768-dimensional embeddings stored in pgvector
 - Excellent performance for short product name similarity
 
 ### Semantic match threshold: 0.55
@@ -201,7 +200,7 @@ GET  /api/system/stats         Dashboard statistics
 **Embedding model slow on first request**
 Pre-downloaded in Docker image. If running locally, it downloads once on first use.
 
-**ChromaDB "no sample reports" warning**
+**"No sample reports" warning**
 Upload at least one sample report in the Sample Reports tab before approving alerts.
 Reports will still generate (zero-shot) but quality is better with examples.
 

@@ -108,7 +108,7 @@ async def seed_clients():
 async def load_samples(directory: str):
     """
     Recursively find all PDF/TXT/MD files in a directory and index them
-    into ChromaDB as RAG style examples.
+    into PostgreSQL (RAG store) as style examples.
 
     File naming convention (used to infer metadata):
       CRITICAL_RCE_cisco-fmc-2026.pdf     → severity=CRITICAL, type=RCE
@@ -183,7 +183,6 @@ async def load_samples(directory: str):
             skipped += 1
             continue
 
-        # Index into ChromaDB
         doc_id = await add_sample_report(
             text=text,
             filename=filename,
@@ -307,7 +306,7 @@ if __name__ == "__main__":
     @cli.command("load-samples")
     @click.argument("directory")
     def load_samples_cmd(directory):
-        """Bulk-index sample reports from a directory into ChromaDB."""
+        """Bulk-index sample reports from a directory into the PostgreSQL RAG store."""
         asyncio.run(load_samples(directory))
 
     @cli.command("embed-assets")

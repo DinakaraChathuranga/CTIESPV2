@@ -9,7 +9,6 @@ venv
 .env
 generated_reports
 sample_reports
-chroma_data
 data
 *.log
 .git

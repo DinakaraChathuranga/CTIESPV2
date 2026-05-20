@@ -169,9 +169,9 @@ def _fallback_report(cve, client, alert):
 
 
 def _make_alert_number():
-    import random
+    import uuid
     now = datetime.utcnow()
-    return f"MITESP{now.strftime('%y%m')}-{random.randint(1,99):02d}"
+    return f"MITESP{now.strftime('%y%m')}-{str(uuid.uuid4())[:6].upper()}"
 
 
 async def generate_report_data(cve: CVE, client: Client, alert: Alert):

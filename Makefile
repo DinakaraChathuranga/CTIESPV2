@@ -86,7 +86,7 @@ poll:
 # ─── Development (local, no Docker for app code) ──────────────────────────────
 # Start infra first: make up-infra
 up-infra:
-	docker compose up -d postgres redis chromadb
+	docker compose up -d postgres redis
 
 dev-backend:
 	cd backend && \
