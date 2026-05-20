@@ -19,10 +19,17 @@
     @keyframes slide-in    { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
     @keyframes fade-in     { from{opacity:0} to{opacity:1} }
     @keyframes progress-bar { from{width:0} to{width:100%} }
-    .spin     { animation: spin .85s linear infinite; }
-    .pulse    { animation: pulse-dot 1.8s ease infinite; }
-    .slide-in { animation: slide-in .2s ease forwards; }
-    .fade-in  { animation: fade-in .18s ease forwards; }
+    @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+    @keyframes kev-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)} 50%{box-shadow:0 0 0 4px rgba(220,38,38,0)} }
+    @keyframes badge-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(1.08)} }
+    @keyframes expand-in { from{opacity:0;max-height:0} to{opacity:1;max-height:2000px} }
+    .spin       { animation: spin .85s linear infinite; }
+    .pulse      { animation: badge-pulse 2.8s ease infinite; }
+    .slide-in   { animation: slide-in .2s ease forwards; }
+    .fade-in    { animation: fade-in .18s ease forwards; }
+    .kev-pulse  { animation: kev-pulse 2s ease infinite; }
+    .shimmer    { background: linear-gradient(90deg,#1a2235 25%,#243050 50%,#1a2235 75%); background-size:400px 100%; animation: shimmer 1.4s infinite; }
+    .expand-in  { animation: expand-in .22s ease forwards; overflow: hidden; }
     input, textarea, select, button { outline: none; }
   </style>
 </head>

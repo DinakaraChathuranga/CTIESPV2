@@ -85,8 +85,8 @@ export const Btn = ({ variant = 'ghost', onClick, children, disabled, loading, s
   );
 };
 
-export const Card = ({ children, style = {}, glow, onClick }) => (
-  <div onClick={onClick} style={{
+export const Card = ({ children, style = {}, glow, onClick, onMouseEnter, onMouseLeave }) => (
+  <div onClick={onClick} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} style={{
     background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 20,
     boxShadow: glow ? `0 0 22px ${glow}` : 'none', cursor: onClick ? 'pointer' : 'default',
     transition: 'box-shadow .2s', ...style,
@@ -238,3 +238,60 @@ export function FilterTabs({ options, active, onChange }) {
     </div>
   );
 }
+
+export const KevBadge = () => (
+  <span className="kev-pulse" style={{
+    background: T.red, color: '#fff', fontFamily: T.mono, fontSize: 10, fontWeight: 700,
+    padding: '2px 8px', borderRadius: 4, letterSpacing: '.06em', whiteSpace: 'nowrap',
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+  }}>🔴 CISA KEV</span>
+);
+
+export const CvssTag = ({ score }) => score ? (
+  <span style={{
+    background: '#1e293b', border: `1px solid ${T.border}`, borderRadius: 4,
+    padding: '2px 7px', fontFamily: T.mono, fontSize: 10, color: T.subtle,
+    display: 'inline-block', whiteSpace: 'nowrap',
+  }}>CVSS {score}</span>
+) : null;
+
+export const EpssTag = ({ score }) => score ? (
+  <span style={{
+    background: '#292215', border: `1px solid ${T.yellow}44`, borderRadius: 4,
+    padding: '2px 7px', fontFamily: T.mono, fontSize: 10, color: T.yellow,
+    display: 'inline-block', whiteSpace: 'nowrap',
+  }}>EPSS {(score * 100).toFixed(1)}%</span>
+) : null;
+
+export const AssetTag = ({ name, hasCpe }) => (
+  <span style={{
+    background: '#0d1520', border: `1px solid ${T.border}`, borderRadius: 4,
+    padding: '2px 8px', fontFamily: T.mono, fontSize: 10, color: T.subtle,
+    display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+  }}>
+    {name}
+    {hasCpe && <span style={{ background: T.tealDim, color: T.teal, borderRadius: 3, padding: '0 4px', fontSize: 9, fontWeight: 700 }}>CPE</span>}
+  </span>
+);
+
+export const ScoreDot = ({ score }) => {
+  const pct = Math.round(Math.min(1, Number(score || 0)) * 100);
+  const color = pct >= 90 ? T.green : pct >= 70 ? T.yellow : T.red;
+  return <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />;
+};
+
+export const SkeletonCard = () => (
+  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 20, marginBottom: 8 }}>
+    <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+      <div className="shimmer" style={{ width: 60, height: 18, borderRadius: 4 }} />
+      <div className="shimmer" style={{ width: 120, height: 18, borderRadius: 4 }} />
+      <div className="shimmer" style={{ width: 80, height: 18, borderRadius: 4 }} />
+    </div>
+    <div className="shimmer" style={{ width: '70%', height: 16, borderRadius: 4, marginBottom: 10 }} />
+    <div className="shimmer" style={{ width: '45%', height: 12, borderRadius: 4, marginBottom: 14 }} />
+    <div style={{ display: 'flex', gap: 6 }}>
+      <div className="shimmer" style={{ width: 70, height: 22, borderRadius: 4 }} />
+      <div className="shimmer" style={{ width: 70, height: 22, borderRadius: 4 }} />
+    </div>
+  </div>
+);

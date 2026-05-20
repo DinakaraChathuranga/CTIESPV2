@@ -4,7 +4,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import {
   T, Badge, Btn, Card, Inp, Sel, Textarea, Lbl, Modal, SectionHead,
   Empty, LoadingPage, KV, StatusDot, FilterTabs, PriorityBar,
-  useConfirm, useAsync,
+  useConfirm, useAsync, KevBadge, EpssTag, CvssTag, AssetTag, ScoreDot, SkeletonCard,
 } from './ui.jsx';
 import {
   clientsAPI, cvesAPI, alertsAPI, reportsAPI, samplesAPI, systemAPI, authAPI,
@@ -36,19 +36,40 @@ function Tag({ children, color = T.subtle }) {
   );
 }
 
-function AIStatus({ alert }) {
-  if (!alert?.ai_verdict) return <Tag>AI: not checked</Tag>;
-  const verdict = alert.ai_verdict;
-  const color = verdict === 'MATCHED' ? T.green : verdict === 'NOT_MATCHED' ? T.red : verdict === 'UNCERTAIN' ? T.orange : T.muted;
-  return <Tag color={color}>AI: {verdict}{alert.ai_confidence !== null && alert.ai_confidence !== undefined ? ` · ${pct(alert.ai_confidence)}` : ''}</Tag>;
+function AIStatus({ alert, compact }) {
+  if (!alert?.ai_verdict) {
+    return <Tag><span style={{ color: T.muted }}>AI: not checked</span></Tag>;
+  }
+  const v = alert.ai_verdict;
+  const color = v === 'MATCHED' ? T.green : v === 'NOT_MATCHED' ? T.red : v === 'UNCERTAIN' ? T.orange : T.muted;
+  const icon = v === 'MATCHED' ? '✓' : v === 'NOT_MATCHED' ? '✗' : '?';
+  const conf = alert.ai_confidence != null ? ` ${pct(alert.ai_confidence)}` : '';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <Tag color={color}>AI: {v} {icon}{conf}</Tag>
+      {!compact && alert.ai_reason && (
+        <span style={{ fontFamily: T.head, fontSize: 11, color: T.muted, fontStyle: 'italic' }}>
+          {alert.ai_reason.slice(0, 80)}{alert.ai_reason.length > 80 ? '…' : ''}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function MatchInfo({ alert }) {
+  const score = Math.round(Math.min(1, Number(alert.match_score || 0)) * 100);
+  const methodColor = alert.match_method === 'cpe' ? T.teal : '#7c3aed';
+  const decColor = alert.match_decision === 'confirmed_match' ? T.green
+    : alert.match_decision === 'needs_review' ? T.yellow : T.muted;
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-      <Tag>{alert.match_method || 'match'} · {pct(alert.match_score)}</Tag>
-      {alert.match_decision && <Tag>{alert.match_decision}</Tag>}
-      <AIStatus alert={alert} />
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+      <Tag color={methodColor}>{alert.match_method || 'match'}</Tag>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <ScoreDot score={alert.match_score} />
+        <Tag>{score}%</Tag>
+      </span>
+      {alert.match_decision && <Tag color={decColor}>{alert.match_decision}</Tag>}
+      <AIStatus alert={alert} compact />
     </div>
   );
 }
@@ -80,15 +101,34 @@ export function Dashboard({ setView }) {
   };
 
   const s = stats || {};
-  const StatCard = ({ label, value, sub, color, icon }) => (
-    <Card glow={color + '18'} style={{ flex: 1, borderTop: `3px solid ${color}`, borderColor: color + '33' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+
+  const pollAgo = (ts) => {
+    if (!ts) return { label: 'Never', color: T.red };
+    const ms = Date.now() - new Date(ts).getTime();
+    const h = ms / 3600000;
+    const color = h <= 7 ? T.green : h <= 24 ? T.yellow : T.red;
+    return { label: ago(ts), color };
+  };
+  const nvdPoll  = pollAgo(s.last_poll_nvd);
+  const cisaPoll = pollAgo(s.last_poll_cisa);
+  const rssPoll  = pollAgo(s.last_poll_rss);
+
+  const StatCard = ({ label, value, sub, trend, color, icon, pct: barPct }) => (
+    <Card glow={color + '18'} style={{ flex: 1, borderTop: `3px solid ${color}`, padding: '18px 20px 0', overflow: 'hidden', transition: 'box-shadow .2s' }}
+      onMouseEnter={e => e.currentTarget.style.boxShadow = `0 0 28px ${color}28`}
+      onMouseLeave={e => e.currentTarget.style.boxShadow = `0 0 22px ${color}18`}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
         <div>
           <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 8 }}>{label}</div>
-          <div style={{ fontFamily: T.head, fontSize: 38, fontWeight: 800, color, lineHeight: 1 }}>{value ?? '—'}</div>
-          {sub && <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted, marginTop: 6 }}>{sub}</div>}
+          <div style={{ fontFamily: T.head, fontSize: 36, fontWeight: 800, color, lineHeight: 1 }}>{value ?? '—'}</div>
+          {sub && <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted, marginTop: 5 }}>{sub}</div>}
+          {trend && <div style={{ fontFamily: T.mono, fontSize: 10, color: T.subtle, marginTop: 4 }}>{trend}</div>}
         </div>
-        <span style={{ fontSize: 28, opacity: .2 }}>{icon}</span>
+        <span style={{ fontSize: 26, opacity: .15 }}>{icon}</span>
+      </div>
+      <div style={{ height: 3, background: T.border, margin: '12px -20px 0', borderRadius: 0 }}>
+        <div style={{ width: `${Math.min(100, barPct || 0)}%`, height: '100%', background: color, transition: 'width .5s ease' }} />
       </div>
     </Card>
   );
@@ -115,11 +155,27 @@ export function Dashboard({ setView }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-        <StatCard label="Clients" value={s.clients} icon="◈" color={T.blue} sub="Monitored" />
-        <StatCard label="Pending Alerts" value={s.alerts_pending} icon="◎" color={T.orange} sub="Awaiting review" />
-        <StatCard label="Critical CVEs" value={s.critical_cves} icon="◉" color={T.red} sub={`${s.kev_cves || 0} in CISA KEV`} />
-        <StatCard label="Reports Sent" value={s.reports_sent} icon="▣" color={T.green} sub={`${s.reports_draft || 0} drafts`} />
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+        <StatCard label="Clients" value={s.clients} icon="◈" color={T.blue} sub="Monitored" trend="Active asset registrations" barPct={Math.min(100, (s.clients || 0) * 5)} />
+        <StatCard label="Pending Alerts" value={s.alerts_pending} icon="◎" color={T.orange} sub="Awaiting review" trend={`${s.alerts_approved || 0} approved this week`} barPct={Math.min(100, (s.alerts_pending || 0) * 2)} />
+        <StatCard label="Critical CVEs" value={s.critical_cves} icon="◉" color={T.red} sub={`${s.kev_cves || 0} in CISA KEV`} trend="Actively exploited in the wild" barPct={Math.min(100, (s.critical_cves || 0) * 3)} />
+        <StatCard label="Reports Sent" value={s.reports_sent} icon="▣" color={T.green} sub={`${s.reports_draft || 0} drafts pending`} trend="Advisory emails delivered" barPct={Math.min(100, ((s.reports_sent || 0) / Math.max(1, (s.reports_sent || 0) + (s.reports_draft || 0))) * 100)} />
+      </div>
+
+      {/* Feed Status row */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 24, alignItems: 'center' }}>
+        <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.08em' }}>Feed Status:</span>
+        {[['NVD', nvdPoll], ['CISA', cisaPoll], ['RSS', rssPoll]].map(([name, p]) => (
+          <span key={name} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: T.surface, border: `1px solid ${p.color}44`,
+            borderRadius: 20, padding: '3px 10px',
+            fontFamily: T.mono, fontSize: 10, color: p.color,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.color, display: 'inline-block' }} />
+            {name}: {p.label}
+          </span>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 20 }}>
@@ -384,17 +440,342 @@ export function Feed({ toast, isAdmin }) {
 // ALERTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ── CVE Detail Modal ───────────────────────────────────────────────────────────
+function CVEDetailModal({ alert, onClose, toast, reload }) {
+  const [working, setWorking] = useState(false);
+  const cve = alert.cve || {};
+  const verify = async () => { setWorking(true); try { const r = await alertsAPI.verify(alert.id); toast(`AI: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const approve = async () => { setWorking(true); try { await alertsAPI.approve(alert.id); toast('Approved — report queued'); reload(); onClose(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const reject = async () => { setWorking(true); try { await alertsAPI.reject(alert.id); toast('Rejected'); reload(); onClose(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const restore = async () => { setWorking(true); try { await alertsAPI.restore(alert.id); toast('Restored'); reload(); onClose(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+
+  return (
+    <Modal onClose={onClose} width={900}>
+      {cve.is_kev && (
+        <div style={{ background: '#450a0a', border: `1px solid ${T.red}`, borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>⚠</span>
+          <span style={{ fontFamily: T.head, fontWeight: 700, color: T.red, fontSize: 13 }}>Actively Exploited — CISA Known Exploited Vulnerabilities (KEV)</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 24 }}>
+        {/* Left column 40% */}
+        <div style={{ width: '38%', flexShrink: 0 }}>
+          <div style={{ fontFamily: T.mono, fontSize: 18, fontWeight: 700, color: T.red, marginBottom: 6 }}>{cve.cve_ids || '—'}</div>
+          <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 14, color: T.text, lineHeight: 1.4, marginBottom: 14 }}>{cve.title || 'Untitled'}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+            {cve.severity && <Badge sev={cve.severity} />}
+            {cve.cvss_score && <CvssTag score={cve.cvss_score} />}
+            {cve.epss_score && <EpssTag score={cve.epss_score} />}
+            {cve.is_kev && <KevBadge />}
+          </div>
+          {cve.priority_score != null && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginBottom: 4, textTransform: 'uppercase' }}>Priority Score</div>
+              <PriorityBar score={cve.priority_score} />
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {cve.source && <KV label="Source" value={<Tag>{cve.source}</Tag>} />}
+            {cve.published_date && <KV label="Published" value={fmt(cve.published_date)} />}
+            {(cve.affected_products || []).length > 0 && (
+              <div>
+                <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>Affected Products</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {(cve.affected_products || []).map(p => <Tag key={p}>{p}</Tag>)}
+                </div>
+              </div>
+            )}
+            {(cve.cpe_strings || []).length > 0 && (
+              <div>
+                <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>CPE Strings ({cve.cpe_strings.length})</div>
+                <div style={{ background: T.surface, borderRadius: 6, padding: 8, maxHeight: 100, overflowY: 'auto' }}>
+                  {cve.cpe_strings.map(c => <div key={c} style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, marginBottom: 3 }}>{c}</div>)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right column 60% */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {cve.description && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>Description</div>
+              <div style={{ fontFamily: T.head, fontSize: 13, color: T.subtle, lineHeight: 1.7, maxHeight: 180, overflowY: 'auto', background: T.surface, borderRadius: 8, padding: 12 }}>{cve.description}</div>
+            </div>
+          )}
+          {(cve.impact || []).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>Impact</div>
+              <div style={{ background: T.surface, borderRadius: 8, padding: 12 }}>
+                {(Array.isArray(cve.impact) ? cve.impact : [cve.impact]).map((i, idx) => (
+                  <div key={idx} style={{ fontFamily: T.head, fontSize: 13, color: T.subtle, lineHeight: 1.6, marginBottom: 4 }}>• {i}</div>
+                ))}
+              </div>
+            </div>
+          )}
+          {cve.remediation && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>Remediation</div>
+              <div style={{ background: '#0d2010', border: `1px solid ${T.green}44`, borderRadius: 8, padding: 12, fontFamily: T.head, fontSize: 13, color: '#86efac', lineHeight: 1.6 }}>{cve.remediation}</div>
+            </div>
+          )}
+          {(cve.refs || []).length > 0 && (
+            <div>
+              <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6 }}>References</div>
+              <div style={{ background: T.surface, borderRadius: 8, padding: 10, maxHeight: 120, overflowY: 'auto' }}>
+                {cve.refs.map(r => <a key={r} href={r} target="_blank" rel="noreferrer" style={{ display: 'block', fontFamily: T.mono, fontSize: 10, color: T.blue, wordBreak: 'break-all', marginBottom: 4 }}>{r}</a>)}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Match info footer */}
+      <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${T.border}` }}>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 10 }}>Match Info — {alert.client?.name || 'Unknown Client'}</div>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+          <KV label="Client" value={<><div style={{ fontFamily: T.head, fontSize: 13, color: T.text, fontWeight: 600 }}>{alert.client?.name || '—'}</div><div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{alert.client?.email || ''}</div></>} />
+          <KV label="Score" value={<><ScoreDot score={alert.match_score} /> {pct(alert.match_score)}</>} />
+          <KV label="Method" value={<Tag color={alert.match_method === 'cpe' ? T.teal : '#7c3aed'}>{alert.match_method || '—'}</Tag>} />
+        </div>
+        {(alert.matched_assets || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+            {alert.matched_assets.map(a => <AssetTag key={a} name={a} />)}
+          </div>
+        )}
+        {alert.ai_verdict && (
+          <div style={{ marginBottom: 12 }}>
+            <AIStatus alert={alert} />
+            {alert.ai_recommended_action && <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted, marginTop: 6 }}>Recommended: {alert.ai_recommended_action}</div>}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {alert.status === 'pending' && (alert.match_score || 0) >= 0.8 && <Btn variant="blue" onClick={verify} loading={working}>AI Verify</Btn>}
+          {alert.status === 'pending' && <><Btn variant="success" onClick={approve} loading={working}>Approve</Btn><Btn variant="danger" onClick={reject} loading={working}>Reject</Btn></>}
+          {alert.status === 'rejected' && <Btn variant="orange" onClick={restore} loading={working}>Restore</Btn>}
+          <Btn variant="ghost" onClick={onClose}>Close</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── AlertRow (list view) ───────────────────────────────────────────────────────
 function AlertRow({ alert, toast, reload }) {
   const [working, setWorking] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const verify = async () => { setWorking(true); try { const r = await alertsAPI.verify(alert.id); toast(`AI verdict: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const [showModal, setShowModal] = useState(false);
+  const cve = alert.cve || {};
+
+  const verify = async () => { setWorking(true); try { const r = await alertsAPI.verify(alert.id); toast(`AI: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
   const approve = async () => { setWorking(true); try { await alertsAPI.approve(alert.id); toast('Alert approved — report queued'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
   const reject = async () => { setWorking(true); try { await alertsAPI.reject(alert.id); toast('Alert rejected'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
   const restore = async () => { setWorking(true); try { await alertsAPI.restore(alert.id); toast('Alert restored'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
 
-  return <Card><div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}><StatusDot status={alert.status} pulse={alert.status === 'pending'} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}><Badge sev={alert.cve?.severity} /><Tag color={T.red}>{alert.cve?.cve_ids}</Tag>{alert.cve?.is_kev && <Tag color={T.red}>KEV</Tag>}<Tag>{alert.status}</Tag></div><div style={{ fontFamily: T.head, fontWeight: 700, color: T.text, fontSize: 14 }}>{alert.cve?.title || 'Untitled CVE'}</div><div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 5 }}>Client: {alert.client?.name || 'Unknown'} · Created {ago(alert.created_at)}</div><div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>{(alert.matched_assets || []).map(a => <Tag key={a}>{a}</Tag>)}{!(alert.matched_assets || []).length && <Tag>No matched assets</Tag>}</div><MatchInfo alert={alert} />{expanded && <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>{alert.match_reason && <KV label="Match Reason" value={alert.match_reason} wide />}{alert.ai_reason && <KV label="AI Reason" value={alert.ai_reason} wide />}{alert.ai_recommended_action && <KV label="AI Action" value={alert.ai_recommended_action} wide />}{alert.notes && <KV label="Notes" value={alert.notes} wide />}{alert.cve?.description && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle, lineHeight: 1.6 }}>{alert.cve.description}</div>}</div>}</div><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 300 }}><Btn sm onClick={() => setExpanded(v => !v)}>{expanded ? 'Hide' : 'Details'}</Btn>{alert.status === 'pending' && (alert.match_score || 0) >= 0.8 && <Btn sm variant="blue" onClick={verify} loading={working}>AI Verify</Btn>}{alert.status === 'pending' && <><Btn sm variant="success" onClick={approve} loading={working}>Approve</Btn><Btn sm variant="danger" onClick={reject} loading={working}>Reject</Btn></>}{alert.status === 'rejected' && <Btn sm variant="orange" onClick={restore} loading={working}>Restore</Btn>}</div></div></Card>;
+  const score = Math.round(Math.min(1, Number(alert.match_score || 0)) * 100);
+
+  return (
+    <>
+      {showModal && <CVEDetailModal alert={alert} onClose={() => setShowModal(false)} toast={toast} reload={reload} />}
+      <Card style={{ transition: 'border-color .15s, background .15s' }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = '#2a3a55'; e.currentTarget.style.background = '#131f35'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.background = T.card; }}
+      >
+        {/* TOP ROW */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+          <StatusDot status={alert.status} pulse={alert.status === 'pending'} />
+          <Badge sev={cve.severity} />
+          <span style={{ fontFamily: T.mono, fontSize: 11, color: T.red, background: '#2d0a0a', border: `1px solid ${T.red}44`, borderRadius: 4, padding: '1px 7px' }}>{cve.cve_ids || '—'}</span>
+          {cve.is_kev && <KevBadge />}
+          <Tag>{alert.status}</Tag>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Btn sm onClick={() => setShowModal(true)}>Details</Btn>
+            {alert.status === 'pending' && (alert.match_score || 0) >= 0.8 && <Btn sm variant="blue" onClick={verify} loading={working}>AI Verify</Btn>}
+            {alert.status === 'pending' && <><Btn sm variant="success" onClick={approve} loading={working}>Approve</Btn><Btn sm variant="danger" onClick={reject} loading={working}>Reject</Btn></>}
+            {alert.status === 'rejected' && <Btn sm variant="orange" onClick={restore} loading={working}>Restore</Btn>}
+          </div>
+        </div>
+
+        {/* TITLE */}
+        <div style={{ fontFamily: T.head, fontWeight: 700, color: T.text, fontSize: 14, marginBottom: 6, lineHeight: 1.4 }}>{cve.title || 'Untitled CVE'}</div>
+
+        {/* META ROW */}
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginBottom: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ color: T.subtle, fontWeight: 600 }}>{alert.client?.name || 'Unknown client'}</span>
+          <span>·</span>
+          <span style={{ color: alert.match_method === 'cpe' ? T.teal : '#a78bfa' }}>{alert.match_method || 'match'}</span>
+          <ScoreDot score={alert.match_score} />
+          <span>{score}%</span>
+          <span>·</span>
+          <span>{ago(alert.created_at)}</span>
+        </div>
+
+        {/* ASSETS */}
+        {(alert.matched_assets || []).length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+            {alert.matched_assets.map(a => <AssetTag key={a} name={a} />)}
+          </div>
+        )}
+
+        {/* CVSS + EPSS + KEV row */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+          {cve.cvss_score && <CvssTag score={cve.cvss_score} />}
+          {cve.epss_score && <EpssTag score={cve.epss_score} />}
+          {cve.priority_score != null && (
+            <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>Priority {Math.round(cve.priority_score)}</span>
+          )}
+        </div>
+
+        {/* AI STATUS */}
+        <AIStatus alert={alert} />
+      </Card>
+    </>
+  );
 }
 
+// ── Grouped view sub-components ────────────────────────────────────────────────
+function GroupClientCard({ alert, toast, reload }) {
+  const [working, setWorking] = useState(false);
+  const score = Math.round(Math.min(1, Number(alert.match_score || 0)) * 100);
+  const methodColor = alert.match_method === 'cpe' ? T.teal : '#7c3aed';
+  const decColor = alert.match_decision === 'confirmed_match' ? T.green
+    : alert.match_decision === 'needs_review' ? T.yellow : T.muted;
+
+  const doVerify = async () => { setWorking(true); try { const r = await alertsAPI.verify(alert.id); toast(`AI: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const doApprove = async () => { setWorking(true); try { await alertsAPI.approve(alert.id); toast('Approved — report queued'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+  const doReject = async () => { setWorking(true); try { await alertsAPI.reject(alert.id); toast('Rejected'); reload(); } catch (e) { toast(e.message, 'error'); } finally { setWorking(false); } };
+
+  return (
+    <div style={{ background: '#0d1520', border: `1px solid ${T.border}`, borderRadius: 8, padding: '12px 14px', transition: 'border-color .15s' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = '#2a3a55'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = T.border}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Client name + email */}
+          <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 14, color: T.text }}>{alert.client_name || alert.client?.name || '—'}</div>
+          {alert.client?.email && <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginBottom: 8 }}>{alert.client.email}</div>}
+
+          {/* Matched assets */}
+          {(alert.matched_assets || []).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+              {alert.matched_assets.map(a => <AssetTag key={a} name={a} hasCpe={alert.match_method === 'cpe'} />)}
+            </div>
+          )}
+
+          {/* Match info row */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+            <Tag color={methodColor}>{alert.match_method === 'cpe' ? 'CPE' : 'Semantic'}</Tag>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <ScoreDot score={alert.match_score} />
+              <Tag>{score}%</Tag>
+            </span>
+            {alert.match_decision && <Tag color={decColor}>{alert.match_decision}</Tag>}
+          </div>
+
+          {/* AI verdict row */}
+          {alert.ai_verdict && (
+            <div style={{ marginTop: 4 }}>
+              <AIStatus alert={alert} />
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap', flexShrink: 0 }}>
+          <Tag>{alert.status}</Tag>
+          {alert.status === 'pending' && (alert.match_score || 0) >= 0.8 && (
+            <Btn sm variant="blue" onClick={doVerify} loading={working}>AI Verify</Btn>
+          )}
+          {alert.status === 'pending' && (
+            <>
+              <Btn sm variant="success" onClick={doApprove} loading={working}>Approve</Btn>
+              <Btn sm variant="danger" onClick={doReject} loading={working}>Reject</Btn>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupCard({ group, toast, reload, bulkApprove, defaultExpanded }) {
+  const [open, setOpen] = useState(defaultExpanded);
+  const pendingCount = group.counts?.pending || 0;
+  const clientCount = (group.alerts || []).length;
+
+  return (
+    <Card glow={group.severity === 'CRITICAL' ? T.redGlow : undefined} style={{ padding: 0, overflow: 'hidden' }}>
+      {/* CVE Group Header */}
+      <div
+        onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '16px 20px', cursor: 'pointer', transition: 'background .12s' }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.02)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+      >
+        {/* LEFT: badges + CVE ID */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, minWidth: 170 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Badge sev={group.severity} />
+            {group.is_kev && <KevBadge />}
+          </div>
+          <span style={{ fontFamily: T.mono, fontSize: 12, color: T.red, background: '#2d0a0a', border: `1px solid ${T.red}44`, borderRadius: 4, padding: '2px 8px', display: 'inline-block' }}>{group.cve_ids}</span>
+          {group.cvss_score && <CvssTag score={group.cvss_score} />}
+          {group.epss_score && <EpssTag score={group.epss_score} />}
+          {group.priority_score != null && (
+            <div style={{ paddingTop: 4 }}>
+              <PriorityBar score={group.priority_score} />
+            </div>
+          )}
+        </div>
+
+        {/* MIDDLE: title + description */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 14, color: T.text, lineHeight: 1.4, marginBottom: 6,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {group.title}
+          </div>
+          {group.description && (
+            <div style={{ fontFamily: T.head, fontSize: 12, color: T.muted, lineHeight: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {group.description?.slice(0, 150)}{(group.description?.length || 0) > 150 ? '…' : ''}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: counts + approve + chevron */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {pendingCount > 0 && (
+              <span style={{ background: T.orangeDim, color: T.orange, border: `1px solid ${T.orange}44`, borderRadius: 12, padding: '2px 10px', fontFamily: T.mono, fontSize: 10, fontWeight: 600 }}>{pendingCount} pending</span>
+            )}
+            <span style={{ background: T.blueDim, color: T.blue, border: `1px solid ${T.blue}44`, borderRadius: 12, padding: '2px 10px', fontFamily: T.mono, fontSize: 10, fontWeight: 600 }}>{clientCount} customers</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {pendingCount > 0 && (
+              <Btn sm variant="success" onClick={e => { e.stopPropagation(); bulkApprove(group); }}>Approve All Pending</Btn>
+            )}
+            <span style={{ color: T.muted, fontSize: 14, transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>⌄</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Expandable client cards */}
+      {open && (
+        <div className="expand-in" style={{ borderTop: `1px solid ${T.border}`, padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {(group.alerts || []).map(a => (
+            <GroupClientCard key={a.id} alert={a} toast={toast} reload={reload} />
+          ))}
+          {!(group.alerts || []).length && (
+            <div style={{ fontFamily: T.head, fontSize: 13, color: T.muted, textAlign: 'center', padding: '16px 0' }}>No clients matched this CVE.</div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Main Alerts component ──────────────────────────────────────────────────────
 export function Alerts({ toast, onCountChange }) {
   const [mode, setMode] = useState('grouped');
   const [status, setStatus] = useState('pending');
@@ -402,12 +783,140 @@ export function Alerts({ toast, onCountChange }) {
   const [search, setSearch] = useState('');
   const [minScore, setMinScore] = useState('');
   const [kevOnly, setKevOnly] = useState(false);
+  const [allExpanded, setAllExpanded] = useState(false);
+  const [expandKey, setExpandKey] = useState(0); // bump to reset all group states
+
   const params = { status: status || undefined, severity: severity || undefined, search: search || undefined, min_score: minScore ? Number(minScore) / 100 : undefined, kev_only: kevOnly || undefined };
   const { data: list, reload, loading } = useAsync(() => mode === 'grouped' ? alertsAPI.grouped(params) : alertsAPI.list({ ...params, limit: 300 }), [mode, status, severity, search, minScore, kevOnly]);
-  useEffect(() => { alertsAPI.stats().then(s => onCountChange?.('alerts', s.pending || 0)).catch(() => {}); }, [list]);
-  const bulkApprove = async group => { const ids = (group.alerts || []).filter(a => a.status === 'pending').map(a => a.id); if (!ids.length) return toast('No pending alerts in this group', 'warn'); try { const r = await alertsAPI.bulkApprove({ alert_ids: ids, notes: 'Bulk approved from grouped CVE view.' }); toast(`${r.approved} alerts approved — reports queued`); reload(); } catch (e) { toast(e.message, 'error'); } };
 
-  return <div className="slide-in" style={{ padding: 32 }}><SectionHead title="Alert Queue" sub="Search, verify, approve, reject, and group alerts by CVE." action={<><Btn sm variant={mode === 'grouped' ? 'primary' : 'ghost'} onClick={() => setMode('grouped')}>Grouped</Btn><Btn sm variant={mode === 'list' ? 'primary' : 'ghost'} onClick={() => setMode('list')}>List</Btn></>} /><Card style={{ marginBottom: 18, padding: 14 }}><div style={{ display: 'grid', gridTemplateColumns: '1.2fr 160px 160px 140px 110px', gap: 10, alignItems: 'center' }}><Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search CVE, client, asset, notes…" /><Sel value={status} onChange={e => setStatus(e.target.value)}><option value="">All status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></Sel><Sel value={severity} onChange={e => setSeverity(e.target.value)}>{sevOptions.map(s => <option key={s} value={s}>{s || 'All severity'}</option>)}</Sel><Inp value={minScore} onChange={e => setMinScore(e.target.value)} placeholder="Min score %" /><label style={{ color: T.subtle, fontFamily: T.head, fontSize: 12, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={kevOnly} onChange={e => setKevOnly(e.target.checked)} />KEV</label></div></Card>{loading ? <LoadingPage message="Loading alerts…" /> : mode === 'grouped' ? <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{(list || []).map(group => <Card key={group.cve_id} glow={group.severity === 'CRITICAL' ? T.redGlow : undefined}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div style={{ flex: 1 }}><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}><Badge sev={group.severity} /><Tag color={T.red}>{group.cve_ids}</Tag>{group.is_kev && <Tag color={T.red}>KEV</Tag>}<Tag>{group.counts?.pending || 0} pending</Tag><Tag>{(group.alerts || []).length} customers</Tag></div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{group.title}</div><PriorityBar score={group.priority_score} /></div><Btn sm variant="success" onClick={() => bulkApprove(group)}>Approve Pending</Btn></div><div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>{(group.alerts || []).map(a => <div key={a.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: 12 }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 600 }}>{a.client_name}</div><div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>{(a.matched_assets || []).map(asset => <Tag key={asset}>{asset}</Tag>)}</div><MatchInfo alert={a} />{a.ai_reason && <div style={{ fontFamily: T.head, color: T.subtle, fontSize: 12, marginTop: 8 }}>AI: {a.ai_reason}</div>}</div><div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}><Tag>{a.status}</Tag>{a.status === 'pending' && (a.match_score || 0) >= 0.8 && <Btn sm variant="blue" onClick={async () => { try { const r = await alertsAPI.verify(a.id); toast(`AI verdict: ${r.verdict} — ${r.reason}`, r.verdict === 'MATCHED' ? 'success' : 'warn'); reload(); } catch (e) { toast(e.message, 'error'); } }}>AI Verify</Btn>}{a.status === 'pending' && <><Btn sm variant="success" onClick={async () => { try { await alertsAPI.approve(a.id); toast('Approved — report queued'); reload(); } catch (e) { toast(e.message, 'error'); } }}>Approve</Btn><Btn sm variant="danger" onClick={async () => { try { await alertsAPI.reject(a.id); toast('Rejected'); reload(); } catch (e) { toast(e.message, 'error'); } }}>Reject</Btn></>}</div></div></div>)}</div></Card>)}{!(list || []).length && <Empty icon="◎" message="No alert groups found." />}</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{(list || []).map(a => <AlertRow key={a.id} alert={a} toast={toast} reload={reload} />)}{!(list || []).length && <Empty icon="◎" message="No alerts found." />}</div>}</div>;
+  useEffect(() => { alertsAPI.stats().then(s => onCountChange?.('alerts', s.pending || 0)).catch(() => {}); }, [list]);
+
+  const bulkApprove = async group => {
+    const ids = (group.alerts || []).filter(a => a.status === 'pending').map(a => a.id);
+    if (!ids.length) return toast('No pending alerts in this group', 'warn');
+    try { const r = await alertsAPI.bulkApprove({ alert_ids: ids, notes: 'Bulk approved from grouped CVE view.' }); toast(`${r.approved} alerts approved — reports queued`); reload(); }
+    catch (e) { toast(e.message, 'error'); }
+  };
+
+  // Count active filters
+  const activeFilters = [status, severity, search, minScore ? `${minScore}%` : '', kevOnly ? 'KEV' : ''].filter(Boolean).length;
+  const clearFilters = () => { setStatus('pending'); setSeverity(''); setSearch(''); setMinScore(''); setKevOnly(false); };
+
+  const resultCount = Array.isArray(list) ? list.length : 0;
+
+  const toggleExpandAll = () => {
+    setAllExpanded(v => !v);
+    setExpandKey(k => k + 1);
+  };
+
+  return (
+    <div className="slide-in" style={{ padding: 32 }}>
+      <SectionHead
+        title="Alert Queue"
+        sub="Search, verify, approve, reject, and group alerts by CVE."
+        action={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {mode === 'grouped' && (
+              <Btn sm variant="ghost" onClick={toggleExpandAll}>
+                {allExpanded ? 'Collapse All' : 'Expand All'}
+              </Btn>
+            )}
+            <Btn sm variant={mode === 'grouped' ? 'primary' : 'ghost'} onClick={() => setMode('grouped')}>Grouped</Btn>
+            <Btn sm variant={mode === 'list' ? 'primary' : 'ghost'} onClick={() => setMode('list')}>List</Btn>
+          </div>
+        }
+      />
+
+      {/* Filter bar */}
+      <Card style={{ marginBottom: 18, padding: 14 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search with icon */}
+          <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.muted, fontSize: 13, pointerEvents: 'none' }}>⌕</span>
+            <Inp value={search} onChange={e => setSearch(e.target.value)} placeholder="Search CVE, client, asset, notes…" style={{ paddingLeft: 30 }} />
+          </div>
+
+          <Sel value={status} onChange={e => setStatus(e.target.value)} style={{ width: 150 }}>
+            <option value="">All status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </Sel>
+
+          <Sel value={severity} onChange={e => setSeverity(e.target.value)} style={{ width: 150 }}>
+            {sevOptions.map(s => <option key={s} value={s}>{s || 'All severity'}</option>)}
+          </Sel>
+
+          {/* Min score input with % label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Inp
+              value={minScore}
+              onChange={e => setMinScore(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="Min score"
+              style={{ width: 90 }}
+            />
+            {minScore && <span style={{ fontFamily: T.mono, fontSize: 11, color: T.subtle, whiteSpace: 'nowrap' }}>Min {minScore}%</span>}
+          </div>
+
+          {/* KEV pill toggle */}
+          <button onClick={() => setKevOnly(v => !v)} style={{
+            background: kevOnly ? T.red : T.surface,
+            color: kevOnly ? '#fff' : T.muted,
+            border: `1px solid ${kevOnly ? T.red : T.border}`,
+            borderRadius: 20, padding: '6px 14px',
+            fontFamily: T.mono, fontSize: 11, fontWeight: 700,
+            cursor: 'pointer', transition: 'all .12s',
+            display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
+          }}>
+            🔴 KEV
+          </button>
+
+          {/* Active filters badge */}
+          {activeFilters > 0 && (
+            <span style={{ background: T.blueDim, color: T.blue, border: `1px solid ${T.blue}44`, borderRadius: 12, padding: '2px 9px', fontFamily: T.mono, fontSize: 10, whiteSpace: 'nowrap' }}>
+              {activeFilters} filter{activeFilters > 1 ? 's' : ''} active
+            </span>
+          )}
+
+          {/* Clear filters */}
+          {activeFilters > 0 && (
+            <Btn sm variant="ghost" onClick={clearFilters}>✕ Clear</Btn>
+          )}
+
+          {/* Result count */}
+          <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+            Showing {resultCount} {mode === 'grouped' ? 'CVE groups' : 'alerts'}
+          </span>
+        </div>
+      </Card>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+        </div>
+      ) : mode === 'grouped' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {(list || []).map(group => (
+            <GroupCard key={`${group.cve_id}-${expandKey}`} group={group} toast={toast} reload={reload} bulkApprove={bulkApprove} defaultExpanded={allExpanded} />
+          ))}
+          {!(list || []).length && (
+            status === 'pending'
+              ? <Empty icon="🎉" message="No pending alerts — great job!" />
+              : <Empty icon="◎" message="No results match your search." />
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(list || []).map(a => <AlertRow key={a.id} alert={a} toast={toast} reload={reload} />)}
+          {!(list || []).length && (
+            status === 'pending'
+              ? <Empty icon="🎉" message="No pending alerts — great job!" />
+              : <Empty icon="◎" message="No results match your search." />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

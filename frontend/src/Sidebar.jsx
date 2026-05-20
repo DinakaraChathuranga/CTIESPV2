@@ -1,4 +1,5 @@
 // src/Sidebar.jsx
+import { useState } from 'react';
 import { T } from './ui.jsx';
 
 const NAV_BASE = [
@@ -14,6 +15,19 @@ const NAV_ADMIN = { id: 'users', icon: '👥', label: 'Users' };
 
 export default function Sidebar({ view, setView, counts, health, user, isAdmin, onLogout }) {
   const nav = isAdmin ? [...NAV_BASE, NAV_ADMIN] : NAV_BASE;
+  const [healthHovered, setHealthHovered] = useState(false);
+
+  const allHealthy = health && Object.values({
+    db: health.db,
+    redis: health.redis,
+    model: health.embedding_model_loaded,
+  }).every(Boolean);
+
+  const healthItems = [
+    ['DB', health?.db],
+    ['Redis', health?.redis],
+    ['AI Model', health?.embedding_model_loaded],
+  ];
 
   return (
     <div style={{
@@ -34,41 +48,80 @@ export default function Sidebar({ view, setView, counts, health, user, isAdmin, 
 
       {/* Navigation */}
       <nav style={{ padding: '12px 10px', flex: 1 }}>
-        {nav.map(n => {
+        {nav.map((n, idx) => {
           const active = view === n.id;
-          const cnt = n.id === 'alerts' ? (counts?.alerts || 0) : 0;
+          const pendingAlerts = counts?.alerts || 0;
+          const draftReports = counts?.reports || 0;
+
+          const subCount = n.id === 'alerts' ? pendingAlerts
+            : n.id === 'reports' ? draftReports
+            : 0;
+
+          const showSep = idx === 3; // separator before Reports group
+
           return (
-            <button key={n.id} onClick={() => setView(n.id)} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
-              marginBottom: 2, textAlign: 'left',
-              background:  active ? 'rgba(220,38,38,.12)' : 'transparent',
-              borderLeft: `2px solid ${active ? T.red : 'transparent'}`,
-              transition: 'all .12s',
-            }}>
-              <span style={{ color: active ? T.red : T.muted, fontSize: 14, width: 16, textAlign: 'center', flexShrink: 0 }}>{n.icon}</span>
-              <span style={{ fontFamily: T.head, fontSize: 13, fontWeight: active ? 600 : 400, color: active ? T.text : T.subtle, flex: 1 }}>{n.label}</span>
-              {cnt > 0 && (
-                <span className="pulse" style={{
-                  background: T.red, color: '#fff', fontFamily: T.mono,
-                  fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, minWidth: 22, textAlign: 'center',
-                }}>{cnt}</span>
+            <div key={n.id}>
+              {showSep && (
+                <div style={{ height: 1, background: T.border, margin: '6px 4px 8px', opacity: 0.5 }} />
               )}
-            </button>
+              <button onClick={() => setView(n.id)} style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                marginBottom: 2, textAlign: 'left',
+                background: active ? 'rgba(220,38,38,.12)' : 'transparent',
+                borderLeft: `2px solid ${active ? T.red : 'transparent'}`,
+                transition: 'all .12s',
+              }}>
+                <span style={{ color: active ? T.red : T.muted, fontSize: 14, width: 16, textAlign: 'center', flexShrink: 0 }}>{n.icon}</span>
+                <span style={{ fontFamily: T.head, fontSize: 13, fontWeight: active ? 600 : 400, color: active ? T.text : T.subtle, flex: 1, textAlign: 'left' }}>{n.label}
+                  {subCount > 0 && (
+                    <div style={{ fontFamily: T.mono, fontSize: 9, color: n.id === 'alerts' ? T.orange : T.blue, marginTop: 1 }}>
+                      {n.id === 'alerts' ? `${subCount} pending` : `${subCount} draft`}
+                    </div>
+                  )}
+                </span>
+                {n.id === 'alerts' && pendingAlerts > 0 && (
+                  <span className="pulse" style={{
+                    background: T.red, color: '#fff', fontFamily: T.mono,
+                    fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
+                    minWidth: 22, textAlign: 'center',
+                  }}>{pendingAlerts}</span>
+                )}
+              </button>
+            </div>
           );
         })}
       </nav>
 
       {/* Health indicators */}
       {health && (
-        <div style={{ padding: '10px 16px', borderTop: `1px solid ${T.border}`, background: 'rgba(0,0,0,.15)' }}>
-          <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, letterSpacing: '.08em', marginBottom: 7, textTransform: 'uppercase' }}>Services</div>
-          {[['DB', health.db], ['Redis', health.redis], ['AI Model', health.embedding_model_loaded]].map(([k, ok]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{k}</span>
-              <span style={{ fontFamily: T.mono, fontSize: 10, color: ok ? T.green : T.red, fontWeight: 600 }}>{ok ? '●' : '○'}</span>
+        <div
+          onMouseEnter={() => setHealthHovered(true)}
+          onMouseLeave={() => setHealthHovered(false)}
+          style={{ padding: '10px 16px', borderTop: `1px solid ${T.border}`, background: 'rgba(0,0,0,.15)', cursor: 'default', transition: 'all .15s' }}
+        >
+          {!healthHovered ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 5 }}>
+                {healthItems.map(([k, ok]) => (
+                  <div key={k} style={{ width: 7, height: 7, borderRadius: '50%', background: ok ? T.green : T.red }} />
+                ))}
+              </div>
+              <span style={{ fontFamily: T.mono, fontSize: 9, color: allHealthy ? T.green : T.orange }}>
+                {allHealthy ? 'All systems operational' : 'Service degraded'}
+              </span>
             </div>
-          ))}
+          ) : (
+            <div>
+              <div style={{ fontFamily: T.mono, fontSize: 9, color: T.muted, letterSpacing: '.08em', marginBottom: 7, textTransform: 'uppercase' }}>Services</div>
+              {healthItems.map(([k, ok]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: T.muted }}>{k}</span>
+                  <span style={{ fontFamily: T.mono, fontSize: 10, color: ok ? T.green : T.red, fontWeight: 600 }}>{ok ? '● online' : '○ offline'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
