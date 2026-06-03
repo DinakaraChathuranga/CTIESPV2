@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
     EMAIL_FROM: str = "CTI Security Team <cti@yoursoc.com>"
+    SMTP_TENANT_ID:     str = ""
+    SMTP_CLIENT_ID:     str = ""
+    SMTP_CLIENT_SECRET: str = ""
 
     class Config:
         env_file = ".env"
