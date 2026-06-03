@@ -998,8 +998,8 @@ async def send_report(
     if not report:
         raise HTTPException(404, "Report not found")
 
-    if not settings.SMTP_USER or not settings.SMTP_PASS:
-        raise HTTPException(400, "SMTP is not configured")
+    if not settings.SMTP_USER or not settings.SMTP_CLIENT_ID or not settings.SMTP_CLIENT_SECRET:
+        raise HTTPException(400, "Email (Graph API) is not configured")
 
     if not report.client or not report.client.email:
         raise HTTPException(400, "Client email missing")
@@ -1064,7 +1064,6 @@ def _send_report_email(report: M.Report) -> None:
     subject     = f"[CTI Advisory] {data.get('title', report.alert_number)} — {data.get('severity', 'HIGH')}"
     html_body   = _build_email_html(data, report.alert_number, client_name)
 
-    # ── Get OAuth2 token from Microsoft ──────────────────────────────────────
     app = msal.ConfidentialClientApplication(
         settings.SMTP_CLIENT_ID,
         authority=f"https://login.microsoftonline.com/{settings.SMTP_TENANT_ID}",
@@ -1076,7 +1075,6 @@ def _send_report_email(report: M.Report) -> None:
     if "access_token" not in result:
         raise RuntimeError(f"OAuth2 token error: {result.get('error_description', result)}")
 
-    # ── Build recipient list from client email ────────────────────────────────
     client_email = report.client.email if report.client else None
     if not client_email:
         raise RuntimeError("Client has no email address configured")
@@ -1087,7 +1085,6 @@ def _send_report_email(report: M.Report) -> None:
         if addr.strip()
     ]
 
-    # ── Send via Microsoft Graph API ─────────────────────────────────────────
     email_payload = {
         "message": {
             "subject": subject,
@@ -1120,89 +1117,124 @@ def _send_report_email(report: M.Report) -> None:
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Graph API error {e.code}: {e.read().decode()}")
 
-
 def _build_email_html(data: dict, alert_number: str, client_name: str) -> str:
-    import base64, pathlib
-    from datetime import datetime
+    """
+    Safer compact HTML email builder.
 
-    # ── Logo ─────────────────────────────────────────────────────────────────
-    logo_path = pathlib.Path(__file__).parent.parent / "static" / "MIT_LOGO.png"
-    if logo_path.exists():
-        b64 = base64.b64encode(logo_path.read_bytes()).decode()
-        logo_src = f"data:image/png;base64,{b64}"
-    else:
-        logo_src = ""
+    Uses html.escape to avoid broken HTML from AI-generated content.
+    """
+    title = escape(str(data.get("title") or "Security Advisory"))
+    severity = escape(str(data.get("severity") or "HIGH").upper())
+    cvss = escape(str(data.get("cvss_score") or "N/A"))
+    description = escape(str(data.get("description") or "No description available.")).replace("\n", "<br>")
+    remediation = escape(str(data.get("remediation") or "Apply vendor patches.")).replace("\n", "<br>")
+    client_note = escape(str(data.get("client_note") or "Please review the advisory and take the recommended actions."))
+    disclaimer = escape(str(data.get("disclaimer") or "The information is provided on an as-is basis."))
+    client_name_safe = escape(str(client_name))
+    alert_number_safe = escape(str(alert_number))
 
-    # ── Template ─────────────────────────────────────────────────────────────
-    tpl_path = pathlib.Path(__file__).parent.parent / "templates" / "email_report.html"
-    template = tpl_path.read_text(encoding="utf-8")
+    refs = data.get("references") or []
+    ref_html = "".join(
+        f'<li><a href="{escape(str(ref))}" style="color:#1565C0;">{escape(str(ref))}</a></li>'
+        for ref in refs[:8]
+    )
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
-    def g(key, default="—"):
-        v = data.get(key, "")
-        return str(v).strip() if v else default
+    impacts = data.get("impact") or []
+    impact_html = "".join(
+        f"<li>{escape(str(item))}</li>"
+        for item in impacts[:8]
+    )
 
-    def list_slot(key, count, alt_key=None):
-        items = data.get(key) or (data.get(alt_key) if alt_key else None) or []
-        if isinstance(items, str):
-            items = [s.strip() for s in items.split("\n") if s.strip()]
-        return {i + 1: items[i] if i < len(items) else "" for i in range(count)}
+    products = data.get("affected_products") or data.get("target_platforms") or []
+    if isinstance(products, str):
+        products = [products]
 
-    severity    = g("severity", "HIGH")
-    impacts     = list_slot("impact",           5, "impacts")
-    remeds      = list_slot("recommendations",  5, "remediations")
-    refs        = list_slot("references",       4)
+    product_html = "".join(
+        f"<li>{escape(str(item))}</li>"
+        for item in products[:10]
+    )
 
-    replacements = {
-        "{{LOGO_SRC}}":                logo_src,
-        "{{ALERT_TITLE}}":             g("title", alert_number),
-        "{{SEVERITY}}":                severity,
-        "{{ALERT_NUMBER}}":            alert_number,
-        "{{TYPE}}":                    g("type", g("vulnerability_type", "Vulnerability")),
-        "{{TARGET_PLATFORMS}}":        g("target_platforms", g("affected_products", "—")),
-        "{{CLIENT_NAME}}":             client_name,
-        "{{GENERATED_DATE}}":          datetime.now().strftime("%B %d, %Y"),
-        "{{AFFECTED_PRODUCT}}":        g("affected_products", g("product", "—")),
-        "{{THREAT_SUMMARY}}":          g("threat_summary", g("executive_summary", "—"))[:140],
-        "{{DESCRIPTION_PARAGRAPH_1}}": g("description", g("executive_summary", "—")),
-        "{{DESCRIPTION_PARAGRAPH_2}}": g("technical_details", ""),
-        "{{DESCRIPTION_PARAGRAPH_3}}": g("description_3", ""),
-        "{{AFFECTED_PRODUCTS_LIST}}":  g("affected_products", "—"),
-        "{{AFFECTED_VERSIONS}}":       g("affected_versions", g("versions", "—")),
-        "{{SEVERITY_DETAILS}}":        g("severity_details",
-                                         f"CVSS {g('cvss_score','—')} — {severity}"),
-        "{{IMPACT_1}}":                impacts[1],
-        "{{IMPACT_2}}":                impacts[2],
-        "{{IMPACT_3}}":                impacts[3],
-        "{{IMPACT_4}}":                impacts[4],
-        "{{IMPACT_5}}":                impacts[5],
-        "{{ATTACK_VECTOR}}":           g("attack_vector", "—"),
-        "{{REMEDIATION_1}}":           remeds[1],
-        "{{REMEDIATION_2}}":           remeds[2],
-        "{{REMEDIATION_3}}":           remeds[3],
-        "{{REMEDIATION_4}}":           remeds[4],
-        "{{REMEDIATION_5}}":           remeds[5],
-        "{{MONITORING_GUIDANCE}}":     g("monitoring_guidance", g("detection",
-                                         "Monitor for indicators of compromise (IoCs) "
-                                         "associated with this vulnerability and apply "
-                                         "vendor patches promptly.")),
-        "{{REFERENCE_1}}":             refs[1],
-        "{{REFERENCE_2}}":             refs[2],
-        "{{REFERENCE_3}}":             refs[3],
-        "{{REFERENCE_4}}":             refs[4],
-        "{{DISCLAIMER_TEXT}}":         (
-            "This advisory is prepared solely for the named recipient organisation. "
-            "Information is based on sources believed to be reliable. "
-            "Millennium IT ESP makes no warranty as to accuracy or completeness. "
-            "Recipients are advised to apply independent judgement."
-        ),
-        "{{ORGANIZATION_NAME}}":       "Millennium IT ESP",
-    }
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table width="720" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
+          <tr>
+            <td style="background:#1a1a2e;padding:24px 32px;color:#ffffff;">
+              <div style="font-size:11px;color:#aab;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">
+                Managed Security Advisory
+              </div>
+              <div style="font-size:22px;font-weight:700;line-height:1.3;">
+                {title}
+              </div>
+              <div style="margin-top:12px;font-size:12px;color:#d1d5db;">
+                Ref: {alert_number_safe} | Severity: {severity} | CVSS: {cvss}
+              </div>
+            </td>
+          </tr>
 
-    for placeholder, value in replacements.items():
-        template = template.replace(placeholder, value if value else "")
+          <tr>
+            <td style="padding:20px 32px;background:#fff7ed;border-left:4px solid #ea580c;">
+              <strong>Advisory for {client_name_safe}</strong><br>
+              <span style="font-size:13px;color:#333;">{client_note}</span>
+            </td>
+          </tr>
 
-    return template
+          <tr>
+            <td style="padding:24px 32px;">
+              <h3 style="margin:0 0 12px;color:#111827;">Vulnerability Description</h3>
+              <div style="font-size:14px;color:#333;line-height:1.7;">{description}</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <h3 style="margin:0 0 12px;color:#111827;">Affected Products</h3>
+              <ul style="font-size:14px;color:#333;line-height:1.7;">{product_html or "<li>Refer to advisory details.</li>"}</ul>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <h3 style="margin:0 0 12px;color:#111827;">Security Impact</h3>
+              <ul style="font-size:14px;color:#333;line-height:1.7;">{impact_html or "<li>Potential security impact based on vulnerability type.</li>"}</ul>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <h3 style="margin:0 0 12px;color:#111827;">Recommended Actions</h3>
+              <div style="background:#e8f5e9;border-left:4px solid #2e7d32;padding:16px;font-size:14px;color:#1b5e20;line-height:1.7;">
+                {remediation}
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:0 32px 24px;">
+              <h3 style="margin:0 0 12px;color:#111827;">References</h3>
+              <ul style="font-size:13px;line-height:1.7;">{ref_html or "<li>No references available.</li>"}</ul>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;line-height:1.6;">
+              {disclaimer}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

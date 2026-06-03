@@ -73,12 +73,9 @@ class Settings(BaseSettings):
         "https://packetstormsecurity.com/headlines.xml",
         "https://www.exploit-db.com/rss.xml",
         "https://seclists.org/rss/fulldisclosure.rss",
-        "https://www.cvedetails.com/vulnerability-feed.php?vendor_id=0&product_id=0&version_id=0&hasexp=1&opec=1&opov=1&opcsrf=1&opgpriv=1&opsqli=1&opxss=1&opdirt=1&opmemc=1&ophttprs=1&opbyp=1&opfileinc=1&opginf=1&cvssscoremin=7&cvssscoremax=10&type=json&format=rss",
         "https://feeds.feedburner.com/securityweek",
         "https://www.rapid7.com/blog/tag/vulnerability-disclosure/rss/",
-        "https://github.blog/changelog/label/security/feed/",
         "https://tools.cisco.com/security/center/rss.x?cat=High",
-        "https://support.microsoft.com/rss/security",
     ]
 
     # ── Report generation ─────────────────────────────────────────────────────
