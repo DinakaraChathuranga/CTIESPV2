@@ -998,8 +998,8 @@ async def send_report(
     if not report:
         raise HTTPException(404, "Report not found")
 
-    if not settings.SMTP_USER or not settings.SMTP_PASS:
-        raise HTTPException(400, "SMTP is not configured")
+    if not settings.SMTP_USER or not settings.SMTP_CLIENT_ID or not settings.SMTP_CLIENT_SECRET:
+        raise HTTPException(400, "Email (Graph API) is not configured")
 
     if not report.client or not report.client.email:
         raise HTTPException(400, "Client email missing")

@@ -93,10 +93,7 @@ class Settings(BaseSettings):
     SMTP_TENANT_ID:     str = ""
     SMTP_CLIENT_ID:     str = ""
     SMTP_CLIENT_SECRET: str = ""
-<<<<<<< Updated upstream
 
-=======
->>>>>>> Stashed changes
     class Config:
         env_file = ".env"
         case_sensitive = True
