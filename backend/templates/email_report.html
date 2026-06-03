@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ALERT_TITLE}} | CTI Advisory</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f8; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+  <!--
+    CTI EMAIL TEMPLATE
+    Replace all values inside {{DOUBLE_CURLY_BRACKETS}} before sending.
+    This template is designed for email body use with mostly inline CSS.
+  -->
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f4f6f8; margin:0; padding:24px 0;">
+    <tr>
+      <td align="center" style="padding:0 12px;">
+
+        <!-- Main Container -->
+        <table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" style="width:760px; max-width:760px; background-color:#ffffff; border:1px solid #d9dee5; border-top:6px solid #d71920;">
+
+          <!-- Header -->
+           <!-- MIT ESP Logo Bar -->
+          <tr>
+            <td style="padding:16px 34px; background-color:#111827;">
+              <img src="{{LOGO_SRC}}" alt="Millennium IT ESP" style="height:52px; width:auto; display:block;" />
+            </td>
+          </tr>
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:28px 34px 18px 34px; background-color:#ffffff;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td valign="top" style="width:70%;">
+                    <div style="font-size:12px; line-height:18px; color:#6b7280; text-transform:uppercase; letter-spacing:1px; font-weight:bold;">
+                      Cyber Threat Intelligence Advisory
+                    </div>
+                    <h1 style="margin:10px 0 0 0; font-size:27px; line-height:34px; font-weight:700; color:#111827;">
+                      {{ALERT_TITLE}}
+                    </h1>
+                  </td>
+                  <td valign="top" align="right" style="width:30%; padding-top:4px;">
+                    <div style="display:inline-block; padding:8px 14px; background-color:#d71920; color:#ffffff; font-size:13px; line-height:16px; font-weight:bold; border-radius:4px; text-transform:uppercase;">
+                      {{SEVERITY}}
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; line-height:18px; color:#6b7280;">
+                      Alert No: <strong style="color:#111827;">{{ALERT_NUMBER}}</strong>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:0 34px;">
+              <div style="height:2px; line-height:2px; background-color:#d71920; font-size:2px;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- Executive Summary / Metadata -->
+          <tr>
+            <td style="padding:24px 34px 10px 34px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding:10px 0; width:170px; font-size:13px; line-height:20px; color:#374151; font-weight:bold;">Type</td>
+                  <td style="padding:10px 0; font-size:13px; line-height:20px; color:#111827;">{{TYPE}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0; width:170px; font-size:13px; line-height:20px; color:#374151; font-weight:bold;">Target Platforms</td>
+                  <td style="padding:10px 0; font-size:13px; line-height:20px; color:#111827;">{{TARGET_PLATFORMS}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0; width:170px; font-size:13px; line-height:20px; color:#374151; font-weight:bold;">Client</td>
+                  <td style="padding:10px 0; font-size:13px; line-height:20px; color:#111827;">{{CLIENT_NAME}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0; width:170px; font-size:13px; line-height:20px; color:#374151; font-weight:bold;">Generated</td>
+                  <td style="padding:10px 0; font-size:13px; line-height:20px; color:#111827;">{{GENERATED_DATE}}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Overview Box -->
+          <tr>
+            <td style="padding:16px 34px 6px 34px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse; border:1px solid #e5e7eb;">
+                <tr>
+                  <td style="padding:14px 16px; background-color:#111827; color:#ffffff; font-size:15px; line-height:22px; font-weight:bold;">
+                    Overview
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px; background-color:#ffffff;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td valign="top" style="width:33%; padding:8px 12px 8px 0; border-right:1px solid #e5e7eb;">
+                          <div style="font-size:12px; line-height:18px; color:#6b7280; font-weight:bold; text-transform:uppercase;">Product</div>
+                          <div style="margin-top:6px; font-size:14px; line-height:21px; color:#111827;">{{AFFECTED_PRODUCT}}</div>
+                        </td>
+                        <td valign="top" style="width:20%; padding:8px 12px; border-right:1px solid #e5e7eb;">
+                          <div style="font-size:12px; line-height:18px; color:#6b7280; font-weight:bold; text-transform:uppercase;">Severity</div>
+                          <div style="margin-top:6px; font-size:14px; line-height:21px; color:#d71920; font-weight:bold;">{{SEVERITY}}</div>
+                        </td>
+                        <td valign="top" style="width:47%; padding:8px 0 8px 12px;">
+                          <div style="font-size:12px; line-height:18px; color:#6b7280; font-weight:bold; text-transform:uppercase;">Threat</div>
+                          <div style="margin-top:6px; font-size:14px; line-height:21px; color:#111827;">{{THREAT_SUMMARY}}</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Description -->
+          <tr>
+            <td style="padding:20px 34px 4px 34px;">
+              <h2 style="margin:0 0 10px 0; font-size:18px; line-height:25px; color:#111827;">Description</h2>
+              <p style="margin:0 0 12px 0; font-size:14px; line-height:22px; color:#374151;">
+                {{DESCRIPTION_PARAGRAPH_1}}
+              </p>
+              <p style="margin:0 0 12px 0; font-size:14px; line-height:22px; color:#374151;">
+                {{DESCRIPTION_PARAGRAPH_2}}
+              </p>
+              <p style="margin:0; font-size:14px; line-height:22px; color:#374151;">
+                {{DESCRIPTION_PARAGRAPH_3}}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Technical Details -->
+          <tr>
+            <td style="padding:24px 34px 4px 34px;">
+              <h2 style="margin:0 0 12px 0; font-size:18px; line-height:25px; color:#111827;">Technical Details and Recommended Actions</h2>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse; border:1px solid #e5e7eb;">
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Affected Products
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    {{AFFECTED_PRODUCTS_LIST}}
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Affected Versions
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    {{AFFECTED_VERSIONS}}
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Severity
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    {{SEVERITY_DETAILS}}
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Impact
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    <ul style="margin:0; padding-left:18px;">
+                      <li style="margin-bottom:6px;">{{IMPACT_1}}</li>
+                      <li style="margin-bottom:6px;">{{IMPACT_2}}</li>
+                      <li style="margin-bottom:6px;">{{IMPACT_3}}</li>
+                      <li style="margin-bottom:6px;">{{IMPACT_4}}</li>
+                      <li style="margin-bottom:0;">{{IMPACT_5}}</li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Attack Vector
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    {{ATTACK_VECTOR}}
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    Remediations
+                  </td>
+                  <td valign="top" style="padding:12px 14px; font-size:13px; line-height:20px; color:#111827;">
+                    <ol style="margin:0; padding-left:18px;">
+                      <li style="margin-bottom:7px;">{{REMEDIATION_1}}</li>
+                      <li style="margin-bottom:7px;">{{REMEDIATION_2}}</li>
+                      <li style="margin-bottom:7px;">{{REMEDIATION_3}}</li>
+                      <li style="margin-bottom:7px;">{{REMEDIATION_4}}</li>
+                      <li style="margin-bottom:0;">{{REMEDIATION_5}}</li>
+                    </ol>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Detection / Monitoring -->
+          <tr>
+            <td style="padding:22px 34px 4px 34px;">
+              <h2 style="margin:0 0 10px 0; font-size:18px; line-height:25px; color:#111827;">Monitoring Guidance</h2>
+              <p style="margin:0; font-size:14px; line-height:22px; color:#374151;">
+                {{MONITORING_GUIDANCE}}
+              </p>
+            </td>
+          </tr>
+
+          <!-- References -->
+          <tr>
+            <td style="padding:22px 34px 4px 34px;">
+              <h2 style="margin:0 0 10px 0; font-size:18px; line-height:25px; color:#111827;">References</h2>
+              <p style="margin:0; font-size:13px; line-height:21px; color:#374151;">
+                {{REFERENCE_1}}<br>
+                {{REFERENCE_2}}<br>
+                {{REFERENCE_3}}<br>
+                {{REFERENCE_4}}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Disclaimer -->
+          <tr>
+            <td style="padding:22px 34px 26px 34px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse; background-color:#fff7ed; border-left:4px solid #f97316;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <div style="font-size:13px; line-height:20px; font-weight:bold; color:#9a3412; margin-bottom:5px;">
+                      Disclaimer
+                    </div>
+                    <div style="font-size:13px; line-height:20px; color:#7c2d12;">
+                      {{DISCLAIMER_TEXT}}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:16px 34px; background-color:#111827; color:#ffffff;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td valign="top" style="font-size:12px; line-height:18px; color:#e5e7eb;">
+                    Prepared for <strong>{{CLIENT_NAME}}</strong> | Alert Number: <strong>{{ALERT_NUMBER}}</strong>
+                  </td>
+                  <td valign="top" align="right" style="font-size:12px; line-height:18px; color:#e5e7eb;">
+                    {{ORGANIZATION_NAME}} Security Operations Center
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+        <!-- End Main Container -->
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
