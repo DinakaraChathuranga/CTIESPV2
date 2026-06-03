@@ -1054,28 +1054,68 @@ async def regenerate_report(
 
 
 def _send_report_email(report: M.Report) -> None:
-    data = report.report_data or {}
+    import msal
+    import json
+    import urllib.request
+    import urllib.error
 
-    client_email = report.client.email
+    data        = report.report_data or {}
     client_name = report.client.name if report.client else "Client"
+    subject     = f"[CTI Advisory] {data.get('title', report.alert_number)} — {data.get('severity', 'HIGH')}"
+    html_body   = _build_email_html(data, report.alert_number, client_name)
 
-    subject = f"[CTI Advisory] {data.get('title', report.alert_number)} — {data.get('severity', 'HIGH')}"
+    app = msal.ConfidentialClientApplication(
+        settings.SMTP_CLIENT_ID,
+        authority=f"https://login.microsoftonline.com/{settings.SMTP_TENANT_ID}",
+        client_credential=settings.SMTP_CLIENT_SECRET,
+    )
+    result = app.acquire_token_for_client(
+        scopes=["https://graph.microsoft.com/.default"]
+    )
+    if "access_token" not in result:
+        raise RuntimeError(f"OAuth2 token error: {result.get('error_description', result)}")
 
-    html_body = _build_email_html(data, report.alert_number, client_name)
+    client_email = report.client.email if report.client else None
+    if not client_email:
+        raise RuntimeError("Client has no email address configured")
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = settings.EMAIL_FROM
-    msg["To"] = client_email
+    recipients = [
+        {"emailAddress": {"address": addr.strip()}}
+        for addr in client_email.split(",")
+        if addr.strip()
+    ]
 
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    email_payload = {
+        "message": {
+            "subject": subject,
+            "body": {
+                "contentType": "HTML",
+                "content": html_body,
+            },
+            "toRecipients": recipients,
+        }
+    }
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(settings.SMTP_USER, settings.SMTP_PASS)
-        server.send_message(msg)
-
+    url     = f"https://graph.microsoft.com/v1.0/users/{settings.SMTP_USER}/sendMail"
+    headers = {
+        "Authorization": f"Bearer {result['access_token']}",
+        "Content-Type":  "application/json",
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(email_payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req)
+        logger.info(
+            "[Email] Report %s sent to %s",
+            report.alert_number,
+            client_email,
+        )
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Graph API error {e.code}: {e.read().decode()}")
 
 def _build_email_html(data: dict, alert_number: str, client_name: str) -> str:
     """
