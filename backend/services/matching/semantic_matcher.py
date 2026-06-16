@@ -143,9 +143,8 @@ def cpe_matches_asset(cpe: str, asset_name: str, asset_cpe: Optional[str] = None
         return True, 0.95
     if product_hit and len(product) > 4:
         return True, 0.8
-    if vendor_hit and len(vendor) > 3:
-        return True, 0.5
-
+    # Vendor-only matches are NOT real matches — they create false positives
+    # (e.g. CVE vendor "microsoft" matching every Microsoft asset). Reject them.
     return False, 0.0
 
 

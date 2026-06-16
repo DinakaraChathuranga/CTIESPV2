@@ -14,7 +14,7 @@ from core.database import init_db
 from api.auth import auth_router
 from api.routes import (
     clients_router, cves_router, alerts_router,
-    reports_router, samples_router, system_router,
+    reports_router, samples_router, system_router, notifications_router,
 )
 
 logging.basicConfig(
@@ -83,6 +83,7 @@ app.include_router(cves_router,    prefix=PREFIX)
 app.include_router(alerts_router,  prefix=PREFIX)
 app.include_router(reports_router, prefix=PREFIX)
 app.include_router(samples_router, prefix=PREFIX)
+app.include_router(notifications_router, prefix=PREFIX)
 app.include_router(system_router,  prefix=PREFIX)
 
 os.makedirs(settings.REPORT_OUTPUT_DIR, exist_ok=True)

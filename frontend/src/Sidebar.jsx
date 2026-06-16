@@ -11,10 +11,13 @@ const NAV_BASE = [
   { id: 'samples',   icon: '📄', label: 'Sample Reports' },
 ];
 
-const NAV_ADMIN = { id: 'users', icon: '👥', label: 'Users' };
+const NAV_ADMIN = [
+  { id: 'users',         icon: '👥', label: 'Users' },
+  { id: 'notifications', icon: '🔔', label: 'Notifications' },
+];
 
 export default function Sidebar({ view, setView, counts, health, user, isAdmin, onLogout }) {
-  const nav = isAdmin ? [...NAV_BASE, NAV_ADMIN] : NAV_BASE;
+  const nav = isAdmin ? [...NAV_BASE, ...NAV_ADMIN] : NAV_BASE;
   const [healthHovered, setHealthHovered] = useState(false);
 
   const allHealthy = health && Object.values({

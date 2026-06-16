@@ -42,6 +42,7 @@ class Client(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_cc: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default="")
     company: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
@@ -215,3 +216,17 @@ class SampleReport(Base):
     full_text: Mapped[Optional[str]] = mapped_column(Text)
     chroma_doc_id: Mapped[Optional[str]] = mapped_column(String(255))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class NotificationRecipient(Base):
+    __tablename__ = "notification_recipients"
+
+    id:                Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email:             Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    name:              Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notify_openai:     Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_feeds:      Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_pipeline:   Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_email_send: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enabled:           Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at:        Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+

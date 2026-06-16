@@ -776,9 +776,15 @@ async def action_alert(
     task_id = None
 
     if body.status == "approved":
+        score = _safe_score(alert.match_score)
+        if score < 0.95:
+            raise HTTPException(400, f"Cannot approve: match score is {score * 100:.0f}%. Reports require >= 95% match confidence.")
+        verdict = (alert.ai_verdict or "").upper()
+        if "APPROVE" not in verdict and "MATCH" not in verdict:
+            raise HTTPException(400, "Cannot approve: AI verification has not passed. Click 'AI Verify' first and ensure the verdict is MATCHED.")
         task = generate_report_task.delay(alert_id)
         task_id = task.id
-        logger.info("[API] Report generation queued for alert %s task=%s", alert_id, task_id)
+        logger.info("[API] Report queued alert=%s task=%s score=%.2f verdict=%s", alert_id, task_id, score, verdict)
 
     msg_map = {
         "approved": "Report generation started — check Reports in a few seconds",
@@ -1079,20 +1085,24 @@ def _send_report_email(report: M.Report) -> None:
     if not client_email:
         raise RuntimeError("Client has no email address configured")
 
-    recipients = [
+    to_recipients = [
         {"emailAddress": {"address": addr.strip()}}
         for addr in client_email.split(",")
+        if addr.strip()
+    ]
+
+    cc_recipients = [
+        {"emailAddress": {"address": addr.strip()}}
+        for addr in (getattr(report.client, "email_cc", "") or "").split(",")
         if addr.strip()
     ]
 
     email_payload = {
         "message": {
             "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": html_body,
-            },
-            "toRecipients": recipients,
+            "body": {"contentType": "HTML", "content": html_body},
+            "toRecipients": to_recipients,
+            "ccRecipients": cc_recipients,
         }
     }
 
@@ -1118,133 +1128,108 @@ def _send_report_email(report: M.Report) -> None:
         raise RuntimeError(f"Graph API error {e.code}: {e.read().decode()}")
 
 def _build_email_html(data: dict, alert_number: str, client_name: str) -> str:
-    """
-    Safer compact HTML email builder.
+    import base64, pathlib as _pl, re
+    from datetime import datetime
 
-    Uses html.escape to avoid broken HTML from AI-generated content.
-    """
-    title = escape(str(data.get("title") or "Security Advisory"))
-    severity = escape(str(data.get("severity") or "HIGH").upper())
-    cvss = escape(str(data.get("cvss_score") or "N/A"))
-    description = escape(str(data.get("description") or "No description available.")).replace("\n", "<br>")
-    remediation = escape(str(data.get("remediation") or "Apply vendor patches.")).replace("\n", "<br>")
-    client_note = escape(str(data.get("client_note") or "Please review the advisory and take the recommended actions."))
-    disclaimer = escape(str(data.get("disclaimer") or "The information is provided on an as-is basis."))
-    client_name_safe = escape(str(client_name))
-    alert_number_safe = escape(str(alert_number))
+    # Logo
+    logo_path = _pl.Path(__file__).parent.parent / "static" / "MIT_LOGO.png"
+    if logo_path.exists():
+        b64 = base64.b64encode(logo_path.read_bytes()).decode()
+        logo_src = f"data:image/png;base64,{b64}"
+    else:
+        logo_src = ""
 
-    refs = data.get("references") or []
-    ref_html = "".join(
-        f'<li><a href="{escape(str(ref))}" style="color:#1565C0;">{escape(str(ref))}</a></li>'
-        for ref in refs[:8]
-    )
+    # Template
+    tpl_path = _pl.Path(__file__).parent.parent / "templates" / "email_report.html"
+    template = tpl_path.read_text(encoding="utf-8")
 
-    impacts = data.get("impact") or []
-    impact_html = "".join(
-        f"<li>{escape(str(item))}</li>"
-        for item in impacts[:8]
-    )
+    def g(key, default="—"):
+        v = data.get(key, "")
+        if isinstance(v, list):
+            return ", ".join(str(i) for i in v if i) if v else default
+        return str(v).strip() if v else default
 
-    products = data.get("affected_products") or data.get("target_platforms") or []
-    if isinstance(products, str):
-        products = [products]
+    def list_slot(key, count, alt_key=None):
+        items = data.get(key) or (data.get(alt_key) if alt_key else None) or []
+        if isinstance(items, str):
+            items = [s.strip() for s in items.split("\n") if s.strip()]
+        return {i + 1: items[i] if i < len(items) else "" for i in range(count)}
 
-    product_html = "".join(
-        f"<li>{escape(str(item))}</li>"
-        for item in products[:10]
-    )
+    severity  = g("severity", "HIGH")
+    impacts   = list_slot("impact", 5, "impacts")
 
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-</head>
-<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 0;">
-    <tr>
-      <td align="center">
-        <table width="720" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;">
-          <tr>
-            <td style="background:#1a1a2e;padding:24px 32px;color:#ffffff;">
-              <div style="font-size:11px;color:#aab;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">
-                Managed Security Advisory
-              </div>
-              <div style="font-size:22px;font-weight:700;line-height:1.3;">
-                {title}
-              </div>
-              <div style="margin-top:12px;font-size:12px;color:#d1d5db;">
-                Ref: {alert_number_safe} | Severity: {severity} | CVSS: {cvss}
-              </div>
-            </td>
-          </tr>
+    def make_ul(items):
+        filtered = [i for i in items.values() if i]
+        if not filtered:
+            return "—"
+        lis = "".join(f'<li style="margin-bottom:6px;">{item}</li>' for item in filtered)
+        return f'<ul style="margin:0; padding-left:18px;">{lis}</ul>'
 
-          <tr>
-            <td style="padding:20px 32px;background:#fff7ed;border-left:4px solid #ea580c;">
-              <strong>Advisory for {client_name_safe}</strong><br>
-              <span style="font-size:13px;color:#333;">{client_note}</span>
-            </td>
-          </tr>
+    def make_ol(items):
+        filtered = [i for i in items.values() if i]
+        if not filtered:
+            return "—"
+        lis = "".join(f'<li style="margin-bottom:7px;">{item}</li>' for item in filtered)
+        return f'<ol style="margin:0; padding-left:18px;">{lis}</ol>'
 
-          <tr>
-            <td style="padding:24px 32px;">
-              <h3 style="margin:0 0 12px;color:#111827;">Vulnerability Description</h3>
-              <div style="font-size:14px;color:#333;line-height:1.7;">{description}</div>
-            </td>
-          </tr>
+    # remediation is a single string — split into sentences
+    remed_raw = data.get("remediation", "")
+    if remed_raw:
+        remed_items = [s.strip().rstrip(".") + "." for s in re.split(r"\.\s+", remed_raw) if s.strip()]
+    else:
+        remed_items = []
+    remeds = {i + 1: remed_items[i] if i < len(remed_items) else "" for i in range(5)}
 
-          <tr>
-            <td style="padding:0 32px 24px;">
-              <h3 style="margin:0 0 12px;color:#111827;">Affected Products</h3>
-              <ul style="font-size:14px;color:#333;line-height:1.7;">{product_html or "<li>Refer to advisory details.</li>"}</ul>
-            </td>
-          </tr>
+    refs      = list_slot("references", 4)
 
-          <tr>
-            <td style="padding:0 32px 24px;">
-              <h3 style="margin:0 0 12px;color:#111827;">Security Impact</h3>
-              <ul style="font-size:14px;color:#333;line-height:1.7;">{impact_html or "<li>Potential security impact based on vulnerability type.</li>"}</ul>
-            </td>
-          </tr>
+    replacements = {
+        "{{LOGO_SRC}}":                logo_src,
+        "{{ALERT_TITLE}}":             g("title", alert_number),
+        "{{SEVERITY}}":                severity,
+        "{{ALERT_NUMBER}}":            alert_number,
+        "{{TYPE}}":                    g("type", g("vulnerability_type", "Vulnerability")),
+        "{{TARGET_PLATFORMS}}":        g("target_platforms", g("affected_products", "—")),
+        "{{CLIENT_NAME}}":             client_name,
+        "{{GENERATED_DATE}}":          data.get("generated_at", "")[:10] if data.get("generated_at") else datetime.now().strftime("%B %d, %Y"),
+        "{{AFFECTED_PRODUCT}}":        g("affected_products", g("product", "—")),
+        "{{THREAT_SUMMARY}}":          g("threat_summary", g("client_note", g("executive_summary", "—")))[:140],
+        "{{DESCRIPTION_PARAGRAPH_1}}": g("description", g("executive_summary", "—")),
+        "{{DESCRIPTION_PARAGRAPH_2}}": g("technical_details", ""),
+        "{{DESCRIPTION_PARAGRAPH_3}}": g("description_3", ""),
+        "{{AFFECTED_PRODUCTS_LIST}}":  g("affected_products", "—"),
+        "{{AFFECTED_VERSIONS}}":       g("affected_versions", g("versions", "—")),
+        "{{SEVERITY_DETAILS}}":        g("severity_detail", f"CVSS {g('cvss_score', '—')} — {severity}"),
+        
+        
+        
+        
+        
+        "{{IMPACT_LIST}}":             make_ul(impacts),
+        "{{REMEDIATION_LIST}}":        make_ol(remeds),
+        "{{EPSS_SCORE}}":              g("epss_note", g("epss_score", "Not available")),
+        "{{ATTACK_VECTOR}}":           g("attack_vector", "—"),
+        
+        
+        
+        
+        
+        "{{MONITORING_GUIDANCE}}":     g("monitoring_guidance", g("detection",
+                                         "Monitor for indicators of compromise (IoCs) "
+                                         "associated with this vulnerability and apply "
+                                         "vendor patches promptly.")),
+        "{{REFERENCE_1}}":             refs[1],
+        "{{REFERENCE_2}}":             refs[2],
+        "{{REFERENCE_3}}":             refs[3],
+        "{{REFERENCE_4}}":             refs[4],
+        "{{DISCLAIMER_TEXT}}":         g("disclaimer", "This information is provided on an \"as-is\" basis without any warranties of any kind. Products that are beyond their End of General Support period are excluded from evaluation."),
+        "{{ORGANIZATION_NAME}}":       "Millennium IT ESP",
+    }
 
-          <tr>
-            <td style="padding:0 32px 24px;">
-              <h3 style="margin:0 0 12px;color:#111827;">Recommended Actions</h3>
-              <div style="background:#e8f5e9;border-left:4px solid #2e7d32;padding:16px;font-size:14px;color:#1b5e20;line-height:1.7;">
-                {remediation}
-              </div>
-            </td>
-          </tr>
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value if value else "")
 
-          <tr>
-            <td style="padding:0 32px 24px;">
-              <h3 style="margin:0 0 12px;color:#111827;">References</h3>
-              <ul style="font-size:13px;line-height:1.7;">{ref_html or "<li>No references available.</li>"}</ul>
-            </td>
-          </tr>
+    return template
 
-          <tr>
-            <td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;line-height:1.6;">
-              {disclaimer}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-"""
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SAMPLE REPORTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-samples_router = APIRouter(prefix="/sample-reports", tags=["Sample Reports"])
-
-
-@samples_router.get("")
 async def get_sample_reports(
     _: M.User = Depends(require_reader),
     db: AsyncSession = Depends(get_db),
@@ -1262,6 +1247,9 @@ async def get_sample_reports(
         }
         for report in reports
     ]
+
+
+samples_router = APIRouter(prefix="/sample-reports", tags=["Sample Reports"])
 
 
 @samples_router.post("/upload")
@@ -1347,6 +1335,105 @@ async def delete_sample_report_route(
 
     await db.delete(sample)
     await db.commit()
+
+
+
+# ─── Notification Recipients ────────────────────────────────────────────────
+notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
+
+
+@notifications_router.get("/recipients")
+async def list_recipients(
+    current_user: M.User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select as _sel
+    r = await db.execute(_sel(M.NotificationRecipient).order_by(M.NotificationRecipient.created_at.desc()))
+    items = r.scalars().all()
+    return [
+        {
+            "id": str(x.id), "email": x.email, "name": x.name,
+            "notify_openai": x.notify_openai, "notify_feeds": x.notify_feeds,
+            "notify_pipeline": x.notify_pipeline, "notify_email_send": x.notify_email_send,
+            "enabled": x.enabled, "created_at": x.created_at.isoformat(),
+        }
+        for x in items
+    ]
+
+
+@notifications_router.post("/recipients", status_code=201)
+async def add_recipient(
+    body: S.NotificationRecipientCreate,
+    current_user: M.User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    rec = M.NotificationRecipient(
+        email=body.email.strip().lower(),
+        name=body.name,
+        notify_openai=body.notify_openai,
+        notify_feeds=body.notify_feeds,
+        notify_pipeline=body.notify_pipeline,
+        notify_email_send=body.notify_email_send,
+        enabled=body.enabled,
+    )
+    db.add(rec)
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(400, f"Could not add recipient: {e}")
+    return {"id": str(rec.id), "email": rec.email}
+
+
+@notifications_router.put("/recipients/{recipient_id}")
+async def update_recipient(
+    recipient_id: str,
+    body: S.NotificationRecipientUpdate,
+    current_user: M.User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    rec = await db.get(M.NotificationRecipient, recipient_id)
+    if not rec:
+        raise HTTPException(404, "Recipient not found")
+    for field in ("name", "notify_openai", "notify_feeds", "notify_pipeline", "notify_email_send", "enabled"):
+        val = getattr(body, field, None)
+        if val is not None:
+            setattr(rec, field, val)
+    await db.commit()
+    return {"id": str(rec.id), "updated": True}
+
+
+@notifications_router.delete("/recipients/{recipient_id}", status_code=204)
+async def delete_recipient(
+    recipient_id: str,
+    current_user: M.User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    rec = await db.get(M.NotificationRecipient, recipient_id)
+    if not rec:
+        raise HTTPException(404, "Recipient not found")
+    await db.delete(rec)
+    await db.commit()
+    return None
+
+
+@notifications_router.post("/test")
+async def send_test_notification(
+    current_user: M.User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a test alert to all opted-in recipients across all categories."""
+    from services.notifications import send_admin_alert
+    sent_any = False
+    for cat in ("openai", "feeds", "pipeline", "email_send"):
+        result = await send_admin_alert(
+            db, cat,
+            f"Test Notification — {cat}",
+            f"This is a test alert for the {cat} category, triggered manually by {current_user.username}. "
+            f"If you received this, your notification settings are working correctly."
+        )
+        sent_any = sent_any or result
+    return {"sent": sent_any, "triggered_by": current_user.username}
 
 
 def _extract_pdf_text(content: bytes) -> str:

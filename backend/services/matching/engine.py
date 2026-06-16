@@ -649,6 +649,17 @@ async def match_cve_to_clients(
         if matched_assets:
             final_score = _safe_score(best_score)
 
+            # Hard floor: never emit a match below the configured threshold.
+            # CPE exact matches (1.0) and qualifying semantic matches pass;
+            # vendor-only / weak matches are dropped here regardless of path.
+            MIN_ALERT_SCORE = max(0.80, float(settings.SEMANTIC_MATCH_THRESHOLD) - 0.15)
+            if final_score < MIN_ALERT_SCORE:
+                logger.info(
+                    "[Match] CVE %s -> client=%s DROPPED (score=%.3f < floor=%.2f)",
+                    cve.cve_ids, client.name, final_score, MIN_ALERT_SCORE,
+                )
+                continue
+
             results.append(
                 MatchResult(
                     client_id=client.id,

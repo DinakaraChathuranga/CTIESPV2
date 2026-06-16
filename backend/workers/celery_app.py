@@ -27,6 +27,7 @@ app.conf.update(
         "workers.tasks.poll_rss_task":   {"queue": "cti_feeds"},
         "workers.tasks.poll_epss_task":  {"queue": "cti_feeds"},
         "workers.tasks.generate_report_task": {"queue": "reports"},
+        "workers.tasks.auto_process_alert_task": {"queue": "paused"},
     },
     beat_schedule={
         "poll-nvd-every-6h": {

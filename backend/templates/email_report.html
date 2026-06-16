@@ -23,7 +23,7 @@
            <!-- MIT ESP Logo Bar -->
           <tr>
             <td style="padding:16px 34px; background-color:#111827;">
-              <img src="{{LOGO_SRC}}" alt="Millennium IT ESP" style="height:52px; width:auto; display:block;" />
+              <img src="{{LOGO_SRC}}" alt="Millennium IT ESP" style="height:80px; width:auto; display:block;" />
             </td>
           </tr>
 
@@ -168,13 +168,7 @@
                     Impact
                   </td>
                   <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
-                    <ul style="margin:0; padding-left:18px;">
-                      <li style="margin-bottom:6px;">{{IMPACT_1}}</li>
-                      <li style="margin-bottom:6px;">{{IMPACT_2}}</li>
-                      <li style="margin-bottom:6px;">{{IMPACT_3}}</li>
-                      <li style="margin-bottom:6px;">{{IMPACT_4}}</li>
-                      <li style="margin-bottom:0;">{{IMPACT_5}}</li>
-                    </ul>
+                    {{IMPACT_LIST}}
                   </td>
                 </tr>
                 <tr>
@@ -186,17 +180,19 @@
                   </td>
                 </tr>
                 <tr>
+                  <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
+                    EPSS Score
+                  </td>
+                  <td valign="top" style="padding:12px 14px; border-bottom:1px solid #e5e7eb; font-size:13px; line-height:20px; color:#111827;">
+                    {{EPSS_SCORE}}
+                  </td>
+                </tr>
+                <tr>
                   <td valign="top" style="width:190px; padding:12px 14px; background-color:#f9fafb; font-size:13px; line-height:20px; font-weight:bold; color:#374151;">
                     Remediations
                   </td>
                   <td valign="top" style="padding:12px 14px; font-size:13px; line-height:20px; color:#111827;">
-                    <ol style="margin:0; padding-left:18px;">
-                      <li style="margin-bottom:7px;">{{REMEDIATION_1}}</li>
-                      <li style="margin-bottom:7px;">{{REMEDIATION_2}}</li>
-                      <li style="margin-bottom:7px;">{{REMEDIATION_3}}</li>
-                      <li style="margin-bottom:7px;">{{REMEDIATION_4}}</li>
-                      <li style="margin-bottom:0;">{{REMEDIATION_5}}</li>
-                    </ol>
+                    {{REMEDIATION_LIST}}
                   </td>
                 </tr>
               </table>

@@ -72,6 +72,7 @@ class AssetIn(BaseModel):
 class ClientCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     email: str
+    email_cc: Optional[str] = ""
     company: Optional[str] = None
 
 
@@ -102,6 +103,7 @@ class ClientOut(BaseModel):
     id: str
     name: str
     email: str
+    email_cc: Optional[str] = ""
     company: Optional[str]
     created_at: datetime
     assets: List[AssetOut] = []
@@ -270,3 +272,31 @@ class HealthOut(BaseModel):
     redis: bool
     embedding_model_loaded: bool
     version: str = "2.0.0"
+
+# ─── Notification Recipients ────────────────────────────────────────────────
+class NotificationRecipientBase(BaseModel):
+    email: str
+    name: Optional[str] = None
+    notify_openai: bool = True
+    notify_feeds: bool = True
+    notify_pipeline: bool = True
+    notify_email_send: bool = True
+    enabled: bool = True
+
+class NotificationRecipientCreate(NotificationRecipientBase):
+    pass
+
+class NotificationRecipientUpdate(BaseModel):
+    name: Optional[str] = None
+    notify_openai: Optional[bool] = None
+    notify_feeds: Optional[bool] = None
+    notify_pipeline: Optional[bool] = None
+    notify_email_send: Optional[bool] = None
+    enabled: Optional[bool] = None
+
+class NotificationRecipientOut(NotificationRecipientBase):
+    id: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+

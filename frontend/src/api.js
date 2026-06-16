@@ -19,14 +19,15 @@ http.interceptors.response.use(
       localStorage.removeItem('cti_user');
       window.location.reload();
     }
-    return Promise.reject(
-      new Error(
-        e.response?.data?.detail ||
-        e.response?.data?.error  ||
-        e.message                ||
-        'Request failed'
-      )
-    );
+    const detail = e.response?.data?.detail;
+    const msg =
+      typeof detail === 'string'   ? detail :
+      Array.isArray(detail)        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ') :
+      detail != null               ? JSON.stringify(detail) :
+      e.response?.data?.error      ||
+      e.message                    ||
+      'Request failed';
+    return Promise.reject(new Error(msg));
   }
 );
 
@@ -145,3 +146,13 @@ export const systemAPI = {
   stats:       () => http.get('/system/stats'),
   embedAssets: () => http.post('/system/embed-assets'),
 };
+
+// ── Notifications API ─────────────────────────────────────────────────────────
+export const notificationsAPI = {
+  list:   ()             => http.get('/notifications/recipients'),
+  create: (data)         => http.post('/notifications/recipients', data),
+  update: (id, data)     => http.put(`/notifications/recipients/${id}`, data),
+  delete: (id)           => http.delete(`/notifications/recipients/${id}`),
+  test:   ()             => http.post('/notifications/test'),
+};
+

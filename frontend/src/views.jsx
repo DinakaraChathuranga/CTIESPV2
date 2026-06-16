@@ -7,7 +7,7 @@ import {
   useConfirm, useAsync, KevBadge, EpssTag, CvssTag, AssetTag, ScoreDot, SkeletonCard,
 } from './ui.jsx';
 import {
-  clientsAPI, cvesAPI, alertsAPI, reportsAPI, samplesAPI, systemAPI, authAPI,
+  clientsAPI, cvesAPI, alertsAPI, reportsAPI, samplesAPI, systemAPI, authAPI, notificationsAPI,
 } from './api.js';
 
 const fmt = d => d ? format(new Date(d), 'dd MMM yyyy HH:mm') : '—';
@@ -226,13 +226,13 @@ export function Clients({ toast, isAdmin }) {
   const { data: list, reload, loading } = useAsync(() => clientsAPI.list({ search: search || undefined }), [search]);
   const { confirm, Dialog } = useConfirm();
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', company: '' });
+  const [form, setForm] = useState({ name: '', email: '', email_cc: '', company: '' });
   const [saving, setSaving] = useState(false);
   const [assetInput, setAssetInput] = useState({});
   const [assetCpe, setAssetCpe] = useState({});
 
-  const openNew = () => { setForm({ name: '', email: '', company: '' }); setModal('new'); };
-  const openEdit = c => { setForm({ name: c.name, email: c.email, company: c.company || '' }); setModal(c.id); };
+  const openNew = () => { setForm({ name: '', email: '', email_cc: '', company: '' }); setModal('new'); };
+  const openEdit = c => { setForm({ name: c.name, email: c.email, email_cc: c.email_cc || '', company: c.company || '' }); setModal(c.id); };
 
   const save = async () => {
     if (!form.name || !form.email) return toast('Name and email required', 'error');
@@ -280,7 +280,8 @@ export function Clients({ toast, isAdmin }) {
         <Modal title={modal === 'new' ? 'New Client' : 'Edit Client'} onClose={() => setModal(null)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div><Lbl>Client Name *</Lbl><Inp value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corporation" /></div>
-            <div><Lbl>Security Contact Email *</Lbl><Inp value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="security@acme.com" type="email" /></div>
+            <div><Lbl>TO — Security Contact Email *</Lbl><Inp value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email1@acme.com, email2@acme.com" /></div>
+            <div><Lbl>CC — Additional Recipients (optional)</Lbl><Inp value={form.email_cc} onChange={e => setForm(f => ({ ...f, email_cc: e.target.value }))} placeholder="cc1@acme.com, cc2@acme.com" /></div>
             <div><Lbl>Company / Division</Lbl><Inp value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} placeholder="Optional" /></div>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 20 }}><Btn variant="primary" onClick={save} loading={saving}>Save</Btn><Btn variant="ghost" onClick={() => setModal(null)}>Cancel</Btn></div>
@@ -295,7 +296,7 @@ export function Clients({ toast, isAdmin }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                 <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                   <div style={{ width: 44, height: 44, background: T.surface, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: T.head, fontWeight: 800, fontSize: 20, color: T.red }}>{c.name?.[0]}</div>
-                  <div><div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>{c.name}</div><div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>{c.email}</div>{c.company && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{c.company}</div>}</div>
+                  <div><div style={{ fontFamily: T.head, fontWeight: 700, fontSize: 15, color: T.text }}>{c.name}</div><div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted }}>TO: {c.email}</div>{c.email_cc && <div style={{ fontFamily: T.mono, fontSize: 11, color: T.subtle }}>CC: {c.email_cc}</div>}{c.company && <div style={{ fontFamily: T.head, fontSize: 12, color: T.subtle }}>{c.company}</div>}</div>
                 </div>
                 {isAdmin && <div style={{ display: 'flex', gap: 8 }}><Btn sm onClick={() => openEdit(c)}>✎ Edit</Btn><Btn sm variant="danger" onClick={() => del(c)}>✕</Btn></div>}
               </div>
@@ -1359,3 +1360,132 @@ export function Users({ toast, user }) {
   const del = u => confirm(`Delete user "${u.username}"?`, async () => { try { await authAPI.deleteUser(u.id); toast('User deleted'); reload(); } catch (e) { toast(e.message, 'error'); } });
   return <div className="slide-in" style={{ padding: 32 }}><SectionHead title="User Management" sub="Create users, change roles, and reset forgotten passwords." /><Card style={{ marginBottom: 18 }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 180px auto', gap: 10, alignItems: 'end' }}><div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="analyst01" /></div><div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="min 8 characters" /></div><div><Lbl>Role</Lbl><Sel value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}><option value="security_reader">security_reader</option><option value="security_admin">security_admin</option></Sel></div><Btn variant="primary" loading={saving} onClick={create}>Create</Btn></div></Card>{Dialog}{resetUser && <Modal title={`Reset password: ${resetUser.username}`} onClose={() => setResetUser(null)} width={420}><Lbl>New Password</Lbl><Inp type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="min 8 characters" /><div style={{ display: 'flex', gap: 8, marginTop: 16 }}><Btn variant="primary" onClick={resetPassword}>Reset Password</Btn><Btn variant="ghost" onClick={() => setResetUser(null)}>Cancel</Btn></div></Modal>}{loading ? <LoadingPage message="Loading users…" /> : <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{(list || []).map(u => <Card key={u.id}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div style={{ fontFamily: T.head, color: T.text, fontWeight: 700 }}>{u.username}</div><div style={{ display: 'flex', gap: 6, marginTop: 6 }}><Tag>{u.role}</Tag><Tag>{u.is_active ? 'active' : 'disabled'}</Tag><Tag>Created {fmt(u.created_at)}</Tag></div></div><div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}><Sel value={u.role} onChange={e => changeRole(u, e.target.value)} style={{ width: 170 }} disabled={u.id === user?.id}><option value="security_reader">security_reader</option><option value="security_admin">security_admin</option></Sel><Btn sm onClick={() => setResetUser(u)}>Reset Password</Btn><Btn sm variant="danger" disabled={u.id === user?.id} onClick={() => del(u)}>Delete</Btn></div></div></Card>)}</div>}</div>;
 }
+
+// ── Notifications: manage system alert recipients ────────────────────────────
+export function Notifications({ toast }) {
+  const { data: list, reload, loading } = useAsync(() => notificationsAPI.list(), []);
+  const [form, setForm] = useState({ email: '', name: '', notify_openai: true, notify_feeds: true, notify_pipeline: true, notify_email_send: true });
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const { confirm, Dialog } = useConfirm();
+
+  const add = async () => {
+    if (!form.email || !form.email.includes('@')) return toast('Valid email required', 'error');
+    setSaving(true);
+    try {
+      await notificationsAPI.create(form);
+      toast('Recipient added');
+      setForm({ email: '', name: '', notify_openai: true, notify_feeds: true, notify_pipeline: true, notify_email_send: true });
+      reload();
+    } catch (e) { toast(e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  const toggle = async (r, field) => {
+    try {
+      await notificationsAPI.update(r.id, { [field]: !r[field] });
+      reload();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+
+  const del = r => confirm(`Remove ${r.email} from system alerts?`, async () => {
+    try { await notificationsAPI.delete(r.id); toast('Recipient removed'); reload(); }
+    catch (e) { toast(e.message, 'error'); }
+  });
+
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const r = await notificationsAPI.test();
+      toast(r.sent ? 'Test emails dispatched' : 'No alerts sent — check throttle or recipients', r.sent ? 'success' : 'warn');
+    } catch (e) { toast(e.message, 'error'); }
+    finally { setTesting(false); }
+  };
+
+  const CategoryToggle = ({ rec, field, label }) => (
+    <button
+      onClick={() => toggle(rec, field)}
+      style={{
+        padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+        fontSize: 11, fontFamily: T.head, fontWeight: 600,
+        background: rec[field] ? T.green + '22' : T.muted + '22',
+        color: rec[field] ? T.green : T.muted,
+        transition: 'all 0.15s',
+      }}
+      title={`${rec[field] ? 'Subscribed to' : 'Not subscribed to'} ${label} alerts`}
+    >
+      {label} {rec[field] ? '✓' : '✗'}
+    </button>
+  );
+
+  return (
+    <div className="slide-in" style={{ padding: 32 }}>
+      <SectionHead
+        title="System Alert Notifications"
+        sub="Recipients listed below will receive emails when OpenAI quota is exhausted, feeds fail, the auto-pipeline errors, or report delivery fails."
+        action={<Btn onClick={sendTest} loading={testing}>Send Test Alert</Btn>}
+      />
+
+      {Dialog}
+
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ fontFamily: T.head, fontSize: 13, color: T.text, fontWeight: 700, marginBottom: 10 }}>
+          Add Recipient
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+          <div>
+            <Lbl>Email *</Lbl>
+            <Inp value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="analyst@example.com" />
+          </div>
+          <div>
+            <Lbl>Name (optional)</Lbl>
+            <Inp value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Doe" />
+          </div>
+          <Btn variant="primary" loading={saving} onClick={add}>+ Add</Btn>
+        </div>
+        <div style={{ fontFamily: T.mono, fontSize: 10, color: T.muted, marginTop: 8 }}>
+          New recipients receive all 4 categories of alerts by default. Toggle individual categories on the list below.
+        </div>
+      </Card>
+
+      {loading ? <LoadingPage message="Loading recipients..." /> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {(list || []).map(r => (
+            <Card key={r.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: T.head, fontSize: 14, color: T.text, fontWeight: 700 }}>
+                    {r.name || r.email}
+                  </div>
+                  <div style={{ fontFamily: T.mono, fontSize: 11, color: T.muted, marginTop: 2 }}>
+                    {r.email}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    <CategoryToggle rec={r} field="notify_openai"     label="OpenAI" />
+                    <CategoryToggle rec={r} field="notify_feeds"      label="Feeds" />
+                    <CategoryToggle rec={r} field="notify_pipeline"   label="Pipeline" />
+                    <CategoryToggle rec={r} field="notify_email_send" label="Email Send" />
+                    <button
+                      onClick={() => toggle(r, 'enabled')}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                        fontSize: 11, fontFamily: T.head, fontWeight: 600,
+                        background: r.enabled ? T.blue + '22' : T.red + '22',
+                        color: r.enabled ? T.blue : T.red,
+                      }}
+                    >
+                      {r.enabled ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+                </div>
+                <Btn sm variant="danger" onClick={() => del(r)}>Remove</Btn>
+              </div>
+            </Card>
+          ))}
+          {!(list || []).length && <Empty icon="!" message="No notification recipients configured yet." />}
+        </div>
+      )}
+    </div>
+  );
+}
+

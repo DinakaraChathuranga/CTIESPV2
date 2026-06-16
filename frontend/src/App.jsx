@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './Sidebar.jsx';
 import Login from './Login.jsx';
 import { T, useToast } from './ui.jsx';
-import { Dashboard, Clients, Feed, Alerts, Reports, SampleReports, Users } from './views.jsx';
+import { Dashboard, Clients, Feed, Alerts, Reports, SampleReports, Users, Notifications } from './views.jsx';
 import { systemAPI, alertsAPI, authAPI } from './api.js';
 
 export default function App() {
@@ -80,6 +80,7 @@ export default function App() {
     reports:   <Reports toast={toast} user={user} />,
     samples:   <SampleReports toast={toast} isAdmin={isAdmin} />,
     users:     isAdmin ? <Users toast={toast} user={user} /> : null,
+    notifications: isAdmin ? <Notifications toast={toast} /> : null,
   };
 
   return (
