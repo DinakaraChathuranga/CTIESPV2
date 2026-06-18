@@ -93,7 +93,7 @@ async def _call_openai(prompt: str) -> str:
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
-        max_tokens=settings.MAX_REPORT_TOKENS,
+        max_tokens=1500,
         response_format={"type": "json_object"},
     )
     return response.choices[0].message.content

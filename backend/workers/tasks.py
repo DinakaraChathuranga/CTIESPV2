@@ -427,7 +427,8 @@ def auto_process_alert_task(self, alert_id: str):
                 if hasattr(alert, field):
                     setattr(alert, field, value)
 
-            if "APPROVE" not in verdict and "MATCH" not in verdict:
+            if verdict not in ["APPROVE", "APPROVED", "MATCH", "MATCHED"]:
+                alert.status = "rejected"
                 await db.commit()
                 logger.info(f"[AutoPipeline] Alert {alert_id} not approved, stopping")
                 return

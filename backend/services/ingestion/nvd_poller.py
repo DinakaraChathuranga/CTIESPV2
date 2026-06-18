@@ -104,10 +104,10 @@ def _nvd_item_to_normalized(item: dict) -> Optional[NormalizedCVE]:
         import re
         vendors = ["Microsoft","Cisco","Fortinet","VMware","Apache","Oracle","IBM",
                    "Juniper","F5","Citrix","Atlassian","GitLab","Jenkins","WordPress",
-                   "Linux","Windows","Firefox","Chrome","Exchange","SharePoint",
-                   "Kubernetes","Docker","Splunk","MongoDB","PostgreSQL","MySQL",
+                   "Firefox","Chrome","Exchange","SharePoint",
+                   "Kubernetes","Splunk","MongoDB","PostgreSQL","MySQL",
                    "Redis","Palo Alto","SolarWinds","Ivanti","Progress","OpenSSL",
-                   "nginx","Drupal","PHP","Safari","Edge","Azure","Android"]
+                   "nginx","Drupal","Safari","Edge","Azure","Android"]
         combined = title_text
         for v in vendors:
             if v.lower() in combined.lower():

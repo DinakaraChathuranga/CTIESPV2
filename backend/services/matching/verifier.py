@@ -57,9 +57,10 @@ Rules:
 4. A Microsoft SharePoint CVE should not match Windows 10/11 or generic Microsoft 365 unless SharePoint/SharePoint Online is clearly affected.
 5. A Windows kernel, Win32K, TCP/IP, Event Log, or driver CVE should match Windows OS assets, not Microsoft 365 cloud service.
 6. Generic assets like "Microsoft 365", "Azure", "Windows", "Fortinet", or "Cisco" require stronger evidence.
-7. If affected product evidence is unclear, answer UNCERTAIN.
-8. If the product is clearly different, answer NOT_MATCHED.
-9. If the product is clearly affected, answer MATCHED.
+7. Application-level CVEs (plugins, themes, web apps) MUST NOT match generic runtimes like "PHP", "Docker", "Java", or "Nginx" unless the runtime engine itself is the vulnerable component.
+8. If affected product evidence is unclear, answer UNCERTAIN.
+9. If the product is clearly different, answer NOT_MATCHED.
+10. If the product is clearly affected, answer MATCHED.
 
 Return exactly this JSON structure (no other text, no markdown):
 {{

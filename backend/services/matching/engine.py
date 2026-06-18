@@ -131,6 +131,12 @@ GENERIC_ASSET_TERMS = {
 
 PRODUCT_EXCLUSION_RULES = [
     {
+        "name": "Runtime vs Application exclusion",
+        "cve_terms": {"plugin", "theme", "extension", "wordpress", "joomla", "magento", "object injection", "sql injection", "xss", "cross site", "directory traversal", "file inclusion", "deserialization", "authentication bypass", "container escape"},
+        "blocked_asset_terms": {"php", "docker", "java", "node.js", "nodejs", "python", "apache", "nginx"},
+        "reason": "Plugin/Theme CVEs must not trigger alerts for underlying generic runtimes.",
+    },
+    {
         "name": "FortiSandbox should not match other Fortinet products",
         "cve_terms": {"fortisandbox", "forti sandbox"},
         "blocked_asset_terms": {
